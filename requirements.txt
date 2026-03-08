@@ -1,0 +1,14 @@
+torch
+torchaudio
+torchvision
+numpy
+pandas
+scipy
+matplotlib
+librosa
+soundfile
+scikit-learn
+pyyaml
+tqdm
+jupyter
+ipykernel
