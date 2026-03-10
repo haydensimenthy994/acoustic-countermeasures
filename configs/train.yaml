@@ -1,0 +1,10 @@
+train:
+  batch_size: 8
+  num_workers: 0
+  epochs: 10
+  device: auto
+  log_every: 10
+  save_best_only: true
+
+seed:
+  value: 42

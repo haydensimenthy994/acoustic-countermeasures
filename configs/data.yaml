@@ -1,0 +1,40 @@
+project:
+  name: acoustic-countermeasures
+
+paths:
+  raw_uav_db_dir: data/raw/uav_db
+  raw_audioset_dir: data/raw/audioset
+  audioset_metadata_dir: data/raw/audioset/metadata
+  interim_audio_dir: data/interim/audio
+  processed_audio_dir: data/processed/audio
+  metadata_dir: data/metadata
+  master_metadata_csv: data/metadata/master_metadata.csv
+
+audio:
+  sample_rate: 16000
+  mono: true
+  normalize: peak
+  clip_duration_sec: null
+
+features:
+  type: mel_spectrogram
+  n_mels: 64
+  frame_ms: 25
+  hop_ms: 10
+
+labels:
+  positive: drone
+  negative: no_drone
+
+augmentation:
+  enabled: false
+  time_shift: false
+  volume_scale: false
+  noise_injection: false
+  rir_convolution: false
+
+  splits:
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  random_seed: 42
