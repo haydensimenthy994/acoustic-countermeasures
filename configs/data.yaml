@@ -33,7 +33,7 @@ augmentation:
   noise_injection: false
   rir_convolution: false
 
-  splits:
+splits:
   train_ratio: 0.7
   val_ratio: 0.15
   test_ratio: 0.15

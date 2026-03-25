@@ -35,6 +35,14 @@ def main() -> None:
 
     df = df.dropna(subset=["label"]).copy()
 
+   # Balance classes by undersampling the majority class
+    min_count = df["label"].value_counts().min()
+    balanced_parts = []
+    for label, group in df.groupby("label"):
+        balanced_parts.append(group.sample(n=min_count, random_state=seed))
+    df = pd.concat(balanced_parts).reset_index(drop=True)
+    print(f"Balanced dataset: {min_count} samples per class ({min_count * 2} total)")
+    
     train_df, temp_df = train_test_split(
         df,
         test_size=(1.0 - train_ratio),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import soundfile as sf
 import pandas as pd
 import torch
 import torchaudio
@@ -76,7 +77,8 @@ class DroneAudioDataset(Dataset):
         row = self.df.iloc[idx]
 
         audio_path = Path(row["filepath"])
-        waveform, sr = torchaudio.load(str(audio_path))
+        data, sr = sf.read(str(audio_path), always_2d=True)
+        waveform = torch.tensor(data.T, dtype=torch.float32)
 
         if waveform.shape[0] > 1:
             waveform = waveform.mean(dim=0, keepdim=True)
@@ -93,7 +95,7 @@ class DroneAudioDataset(Dataset):
         label = LABEL_MAP[row["label"]]
 
         return {
-            "features": features,                     # [n_mels, time]
+            "features": features,
             "label": torch.tensor(label, dtype=torch.long),
             "filepath": str(audio_path),
             "dataset": row.get("dataset", "unknown"),

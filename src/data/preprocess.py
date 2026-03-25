@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import numpy as np
 import soundfile as sf
 import torch
 import torchaudio
@@ -28,7 +29,8 @@ def preprocess_file(
     mono: bool = True,
     normalize: bool = True,
 ) -> tuple[int, int]:
-    waveform, sr = torchaudio.load(str(input_path))
+    data, sr = sf.read(str(input_path), always_2d=True)
+    waveform = torch.tensor(data.T, dtype=torch.float32)
 
     if mono and waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
@@ -77,19 +79,26 @@ def main() -> None:
 
     print(f"Found {len(audio_files)} audio files")
 
+    skipped = 0
+    processed = 0
     for src_path in audio_files:
         rel_path = src_path.relative_to(input_dir).with_suffix(".wav")
         dst_path = output_dir / rel_path
-        sr, n = preprocess_file(
-            input_path=src_path,
-            output_path=dst_path,
-            target_sr=target_sr,
-            mono=mono,
-            normalize=normalize,
-        )
-        print(f"Processed: {src_path} -> {dst_path} | sr={sr} samples={n}")
+        try:
+            sr, n = preprocess_file(
+                input_path=src_path,
+                output_path=dst_path,
+                target_sr=target_sr,
+                mono=mono,
+                normalize=normalize,
+            )
+            print(f"OK: {src_path.name} | sr={sr} samples={n}")
+            processed += 1
+        except Exception as e:
+            print(f"SKIP: {src_path.name} | {e}")
+            skipped += 1
 
-    print("Done.")
+    print(f"\nDone. Processed={processed} Skipped={skipped}")
 
 
 if __name__ == "__main__":
