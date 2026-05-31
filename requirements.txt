@@ -6,6 +6,7 @@ pandas
 scipy
 matplotlib
 librosa
+torchlibrosa==0.1.0
 soundfile
 scikit-learn
 pyyaml

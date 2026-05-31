@@ -1,0 +1,161 @@
+{
+  "fgsm_transfer": [
+    {
+      "attack": "FGSM",
+      "epsilon": 0.001,
+      "total_samples": 400,
+      "transfer_asr": 0.1375,
+      "adv_accuracy": 0.8625,
+      "avg_confidence_drop": 0.10459865920245648,
+      "std_confidence_drop": 0.15291477017106975,
+      "avg_l2_norm": 0.12507086591078684,
+      "avg_linf_norm": 0.000954008756357675,
+      "avg_snr_db": 45.20301261314979
+    },
+    {
+      "attack": "FGSM",
+      "epsilon": 0.005,
+      "total_samples": 400,
+      "transfer_asr": 0.1275,
+      "adv_accuracy": 0.8725,
+      "avg_confidence_drop": 0.13671269845217465,
+      "std_confidence_drop": 0.1375151408424309,
+      "avg_l2_norm": 0.625355315896181,
+      "avg_linf_norm": 0.004769920147597217,
+      "avg_snr_db": 31.22562397443331
+    },
+    {
+      "attack": "FGSM",
+      "epsilon": 0.01,
+      "total_samples": 400,
+      "transfer_asr": 0.1275,
+      "adv_accuracy": 0.8725,
+      "avg_confidence_drop": 0.14267196521162986,
+      "std_confidence_drop": 0.11895113150535147,
+      "avg_l2_norm": 1.2507108954282908,
+      "avg_linf_norm": 0.009539840295194434,
+      "avg_snr_db": 25.20508546095628
+    },
+    {
+      "attack": "FGSM",
+      "epsilon": 0.02,
+      "total_samples": 400,
+      "transfer_asr": 0.1475,
+      "adv_accuracy": 0.8525,
+      "avg_confidence_drop": 0.16001584589481355,
+      "std_confidence_drop": 0.1397850636277794,
+      "avg_l2_norm": 2.501422020105215,
+      "avg_linf_norm": 0.019079680590388868,
+      "avg_snr_db": 19.18450018075796
+    },
+    {
+      "attack": "FGSM",
+      "epsilon": 0.05,
+      "total_samples": 400,
+      "transfer_asr": 0.25,
+      "adv_accuracy": 0.75,
+      "avg_confidence_drop": 0.19968778118491173,
+      "std_confidence_drop": 0.21351152069232252,
+      "avg_l2_norm": 6.253555224492,
+      "avg_linf_norm": 0.0476991875240436,
+      "avg_snr_db": 11.225703624578623
+    }
+  ],
+  "pgd_transfer": [
+    {
+      "attack": "PGD",
+      "epsilon": 0.001,
+      "num_steps": 40,
+      "total_samples": 400,
+      "transfer_asr": 0.4375,
+      "adv_accuracy": 0.5625,
+      "avg_confidence_drop": 0.2164279475901276,
+      "std_confidence_drop": 0.315322289871941,
+      "avg_l2_norm": 0.12017796847682732,
+      "avg_linf_norm": 0.0009540040426565191,
+      "avg_snr_db": 45.572169010455795
+    },
+    {
+      "attack": "PGD",
+      "epsilon": 0.005,
+      "num_steps": 40,
+      "total_samples": 400,
+      "transfer_asr": 0.4875,
+      "adv_accuracy": 0.5125,
+      "avg_confidence_drop": 0.3247151178331114,
+      "std_confidence_drop": 0.4548943372008204,
+      "avg_l2_norm": 0.5860270078365619,
+      "avg_linf_norm": 0.004769920147597217,
+      "avg_snr_db": 31.813644959376408
+    },
+    {
+      "attack": "PGD",
+      "epsilon": 0.01,
+      "num_steps": 40,
+      "total_samples": 400,
+      "transfer_asr": 0.4875,
+      "adv_accuracy": 0.5125,
+      "avg_confidence_drop": 0.3216647489834577,
+      "std_confidence_drop": 0.44685326172090367,
+      "avg_l2_norm": 1.1206557464141111,
+      "avg_linf_norm": 0.009539840295194434,
+      "avg_snr_db": 26.177464925325832
+    },
+    {
+      "attack": "PGD",
+      "epsilon": 0.02,
+      "num_steps": 40,
+      "total_samples": 400,
+      "transfer_asr": 0.485,
+      "adv_accuracy": 0.515,
+      "avg_confidence_drop": 0.308198587205261,
+      "std_confidence_drop": 0.4162237728350448,
+      "avg_l2_norm": 2.116554854007868,
+      "avg_linf_norm": 0.019079680590388868,
+      "avg_snr_db": 20.63909039130578
+    },
+    {
+      "attack": "PGD",
+      "epsilon": 0.05,
+      "num_steps": 40,
+      "total_samples": 400,
+      "transfer_asr": 0.48,
+      "adv_accuracy": 0.52,
+      "avg_confidence_drop": 0.27823026271536944,
+      "std_confidence_drop": 0.3124818746099763,
+      "avg_l2_norm": 4.899720407449282,
+      "avg_linf_norm": 0.0476991875240436,
+      "avg_snr_db": 13.325309404960045
+    }
+  ],
+  "eot_transfer": [
+    {
+      "attack": "EOT-PGD",
+      "epsilon": 0.001,
+      "num_steps": 20,
+      "num_eot_samples": 5,
+      "total_samples": 400,
+      "transfer_asr_digital": 0.4875,
+      "transfer_asr_ota": 0.485,
+      "adv_accuracy_digital": 0.5125,
+      "adv_accuracy_ota": 0.515,
+      "avg_confidence_drop": 0.3399946941116252,
+      "std_confidence_drop": 0.4831534784255674,
+      "avg_snr_db": 44.01730023897611
+    },
+    {
+      "attack": "EOT-PGD",
+      "epsilon": 0.005,
+      "num_steps": 20,
+      "num_eot_samples": 5,
+      "total_samples": 400,
+      "transfer_asr_digital": 0.4875,
+      "transfer_asr_ota": 0.485,
+      "adv_accuracy_digital": 0.5125,
+      "adv_accuracy_ota": 0.515,
+      "avg_confidence_drop": 0.34075370144790085,
+      "std_confidence_drop": 0.482763289299972,
+      "avg_snr_db": 29.90591338964609
+    }
+  ]
+}

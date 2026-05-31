@@ -1,0 +1,19 @@
+{
+  "model": "CNN14ProxyClassifier",
+  "test_samples": 410,
+  "accuracy": 0.975609756097561,
+  "f1_score": 0.9759615384615384,
+  "precision": 0.9620853080568721,
+  "recall": 0.9902439024390244,
+  "auc_roc": 0.99738251041047,
+  "confusion_matrix": [
+    [
+      197,
+      8
+    ],
+    [
+      2,
+      203
+    ]
+  ]
+}

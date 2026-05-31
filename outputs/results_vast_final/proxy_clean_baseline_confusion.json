@@ -1,0 +1,26 @@
+{
+  "model": "ProxyAudioCNN",
+  "accuracy": 0.9780487804878049,
+  "precision": 0.9851485148514851,
+  "recall": 0.9707317073170731,
+  "f1": 0.9778869778869779,
+  "confusion_matrix": [
+    [
+      202,
+      3
+    ],
+    [
+      6,
+      199
+    ]
+  ],
+  "labels": [
+    "no_drone",
+    "drone"
+  ],
+  "tn": 202,
+  "fp": 3,
+  "fn": 6,
+  "tp": 199,
+  "n_samples": 410
+}

@@ -1,0 +1,34 @@
+[
+  {
+    "epsilon": 0.001,
+    "alpha": 0.0001,
+    "num_steps": 20,
+    "num_eot_samples": 5,
+    "total_samples": 400,
+    "digital_asr": 0.81,
+    "ota_asr": 0.37,
+    "adv_accuracy_digital": 0.19,
+    "adv_accuracy_ota": 0.63,
+    "avg_confidence_drop": 0.7363993968202718,
+    "std_confidence_drop": 0.3083122096494599,
+    "avg_l2_norm": 0.1813712163040271,
+    "avg_linf_norm": 0.0010000302886160521,
+    "avg_snr_db": 42.27578772031344
+  },
+  {
+    "epsilon": 0.005,
+    "alpha": 0.0005,
+    "num_steps": 20,
+    "num_eot_samples": 5,
+    "total_samples": 400,
+    "digital_asr": 0.99,
+    "ota_asr": 0.9225,
+    "adv_accuracy_digital": 0.01,
+    "adv_accuracy_ota": 0.0775,
+    "avg_confidence_drop": 0.9650415276424618,
+    "std_confidence_drop": 0.11197294510748276,
+    "avg_l2_norm": 0.9181954677288349,
+    "avg_linf_norm": 0.005000002521018569,
+    "avg_snr_db": 28.186722902151253
+  }
+]

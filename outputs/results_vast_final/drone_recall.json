@@ -1,0 +1,6 @@
+{
+  "drone_recall": 0.9902439117431641,
+  "no_drone_recall": 0.9609755873680115,
+  "num_drone_samples": 205,
+  "num_no_drone_samples": 205
+}

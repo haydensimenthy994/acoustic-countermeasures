@@ -4,37 +4,44 @@
 Build a baseline drone-vs-non-drone acoustic proxy classifier using public datasets, then evaluate adversarial attacks such as FGSM, PGD, and EOT-based PGD.
 
 ## Current status
-This repository is currently in **Phase 1: dataset setup, preprocessing, and baseline proxy classifier development**.
+Phases 1–6 complete. Two classifiers trained (ProxyAudioCNN scratch on
+log-mel; CNN14ProxyClassifier fine-tuned from PANNs on raw waveform).
+FGSM, PGD, EOT-PGD, jamming, and acoustic-spoofing baselines run.
+Black-box transfer (CNN14 → ProxyAudioCNN) evaluated. All six thesis
+figures generated from saved CSVs/JSONs.
 
-### Implemented so far
-- Project repository and local research structure
-- Python virtual environment and dependency setup
-- Config files for data, model, and training
-- Audio preprocessing pipeline
-- Log-mel spectrogram feature extraction
-- Metadata manifest builder
-- Train/validation/test split generation
-- PyTorch dataset loader
-- Placeholder proxy CNN model scaffold
-- Seed and logging utilities
-- Dataset/model smoke test scripts
-- AudioSet metadata download pipeline
-- UAV-DB access obtained
+### Reproducibility / correctness notes (May 2026 audit)
+After a code review of the result files, the following were addressed:
 
-### In progress
-- Inspecting UAV-DB metadata tables
-- Mapping UAV-DB content into binary labels (`drone`, `no_drone`)
-- Curating the local training dataset
-- Implementing the full training loop
-- Running the first clean baseline experiment
+- `evaluate_spoofing` previously computed the model's drone-class
+  recall and mis-reported it as a spoofing ASR. The legacy number is
+  now produced by `evaluate_drone_recall` (`outputs/results/drone_recall.json`)
+  under its correct name, and a real acoustic-spoofing baseline
+  (drone audio injected into no_drone clips at a range of SNRs) is
+  written to `outputs/results/spoofing_results.csv`.
+- `evaluate_jamming` now reports both a `conditional_asr` (using the
+  same clean-correct denominator as the gradient attacks, suitable for
+  Figure 5) and the legacy `asr` (population, `1 - accuracy`).
+- The EOT-PGD OTA evaluation now applies the same additive Gaussian
+  noise (SNR 20–40 dB) that the attack saw during training.
+  Previously the OTA evaluation applied RIR + gain only, making the
+  reported OTA ASR optimistic. The same fix is applied to the OTA
+  branch of `scripts/run_blackbox_transfer.py`.
+- The RIR bank is now generated with a fixed seed
+  (`build_rir_bank(seed=42)`), so EOT-PGD runs are bit-reproducible.
+- `set_seed(42)` is called at the top of every `scripts/run_*.py`
+  attack and baseline script.
+- `scripts/check_duration_leakage.py` audits whether drone vs
+  no_drone clip durations differ enough to make padding a class
+  shortcut.
 
 ## Planned phases
-1. Dataset setup and preprocessing
-2. Baseline proxy classifier training
-3. Clean evaluation
-4. Adversarial attack implementation
-5. Over-the-air simulation
-6. Transferability / black-box evaluation
+1. Dataset setup and preprocessing  [done]
+2. Baseline proxy classifier training  [done]
+3. Clean evaluation  [done]
+4. Adversarial attack implementation  [done]
+5. Over-the-air simulation  [done]
+6. Transferability / black-box evaluation  [done]
 
 ## Repository structure
 - `configs/` — YAML configs for data, model, and training

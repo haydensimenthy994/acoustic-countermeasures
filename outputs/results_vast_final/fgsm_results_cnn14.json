@@ -1,0 +1,57 @@
+[
+  {
+    "epsilon": 0.001,
+    "total_samples": 400,
+    "attack_success_rate": 0.0825,
+    "adv_accuracy": 0.9175,
+    "avg_confidence_drop": 0.1266986472904682,
+    "std_confidence_drop": 0.18961870703306974,
+    "avg_l2_norm": 0.12469922034786297,
+    "avg_linf_norm": 0.0009511471681225186,
+    "avg_snr_db": 45.22660020681528
+  },
+  {
+    "epsilon": 0.005,
+    "total_samples": 400,
+    "attack_success_rate": 0.175,
+    "adv_accuracy": 0.825,
+    "avg_confidence_drop": 0.2357378540262016,
+    "std_confidence_drop": 0.23488963611995017,
+    "avg_l2_norm": 0.6234970986843109,
+    "avg_linf_norm": 0.004755611585166592,
+    "avg_snr_db": 31.249212705172024
+  },
+  {
+    "epsilon": 0.01,
+    "total_samples": 400,
+    "attack_success_rate": 0.2375,
+    "adv_accuracy": 0.7625,
+    "avg_confidence_drop": 0.3008049345693548,
+    "std_confidence_drop": 0.2580268056827232,
+    "avg_l2_norm": 1.246994463297037,
+    "avg_linf_norm": 0.009511223170333184,
+    "avg_snr_db": 25.228674301734337
+  },
+  {
+    "epsilon": 0.02,
+    "total_samples": 400,
+    "attack_success_rate": 0.3125,
+    "adv_accuracy": 0.6875,
+    "avg_confidence_drop": 0.35688717026950145,
+    "std_confidence_drop": 0.27321978826563215,
+    "avg_l2_norm": 2.493989119162926,
+    "avg_linf_norm": 0.01902244634066637,
+    "avg_snr_db": 19.208088874816895
+  },
+  {
+    "epsilon": 0.05,
+    "total_samples": 400,
+    "attack_success_rate": 0.355,
+    "adv_accuracy": 0.645,
+    "avg_confidence_drop": 0.3978239941850188,
+    "std_confidence_drop": 0.2818424905327179,
+    "avg_l2_norm": 6.234973082175622,
+    "avg_linf_norm": 0.047556102132567994,
+    "avg_snr_db": 11.249292006859413
+  }
+]

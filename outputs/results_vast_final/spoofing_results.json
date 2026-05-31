@@ -1,0 +1,74 @@
+[
+  {
+    "snr_db": 20,
+    "spoofing_asr": 0.23595505617977527,
+    "flipped": 42,
+    "clean_correct_no_drone": 178,
+    "avg_clean_no_drone_confidence": 0.9624674832553006,
+    "avg_mix_no_drone_confidence": 0.7312875796687468
+  },
+  {
+    "snr_db": 15,
+    "spoofing_asr": 0.43820224719101125,
+    "flipped": 78,
+    "clean_correct_no_drone": 178,
+    "avg_clean_no_drone_confidence": 0.9624674832553006,
+    "avg_mix_no_drone_confidence": 0.5633950057233327
+  },
+  {
+    "snr_db": 10,
+    "spoofing_asr": 0.6067415730337079,
+    "flipped": 108,
+    "clean_correct_no_drone": 178,
+    "avg_clean_no_drone_confidence": 0.9624674832553006,
+    "avg_mix_no_drone_confidence": 0.3816557464327754
+  },
+  {
+    "snr_db": 5,
+    "spoofing_asr": 0.7415730337078652,
+    "flipped": 132,
+    "clean_correct_no_drone": 178,
+    "avg_clean_no_drone_confidence": 0.9624674832553006,
+    "avg_mix_no_drone_confidence": 0.28529943701855837
+  },
+  {
+    "snr_db": 0,
+    "spoofing_asr": 0.8539325842696629,
+    "flipped": 152,
+    "clean_correct_no_drone": 178,
+    "avg_clean_no_drone_confidence": 0.9624674832553006,
+    "avg_mix_no_drone_confidence": 0.1741873330679431
+  },
+  {
+    "snr_db": -5,
+    "spoofing_asr": 0.9044943820224719,
+    "flipped": 161,
+    "clean_correct_no_drone": 178,
+    "avg_clean_no_drone_confidence": 0.9624674832553006,
+    "avg_mix_no_drone_confidence": 0.11307065572703506
+  },
+  {
+    "snr_db": -10,
+    "spoofing_asr": 0.898876404494382,
+    "flipped": 160,
+    "clean_correct_no_drone": 178,
+    "avg_clean_no_drone_confidence": 0.9624674832553006,
+    "avg_mix_no_drone_confidence": 0.1243674742247483
+  },
+  {
+    "snr_db": -15,
+    "spoofing_asr": 0.9606741573033708,
+    "flipped": 171,
+    "clean_correct_no_drone": 178,
+    "avg_clean_no_drone_confidence": 0.9624674832553006,
+    "avg_mix_no_drone_confidence": 0.0649685721328621
+  },
+  {
+    "snr_db": -20,
+    "spoofing_asr": 0.9438202247191011,
+    "flipped": 168,
+    "clean_correct_no_drone": 178,
+    "avg_clean_no_drone_confidence": 0.9624674832553006,
+    "avg_mix_no_drone_confidence": 0.08534866140341679
+  }
+]

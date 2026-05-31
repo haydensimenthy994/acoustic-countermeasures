@@ -1,0 +1,21 @@
+{
+  "model": "ProxyAudioCNN",
+  "checkpoint": "outputs/checkpoints/best_model.pt",
+  "use_raw_waveform": false,
+  "test_samples": 410,
+  "accuracy": 0.9780487804878049,
+  "f1_score": 0.9778869778869779,
+  "precision": 0.9851485148514851,
+  "recall": 0.9707317073170731,
+  "auc_roc": 0.9890303390838787,
+  "confusion_matrix": [
+    [
+      202,
+      3
+    ],
+    [
+      6,
+      199
+    ]
+  ]
+}

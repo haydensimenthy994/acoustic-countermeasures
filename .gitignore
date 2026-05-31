@@ -13,6 +13,13 @@ __pycache__/
 data/raw/
 data/interim/
 data/processed/
+data/external/
+
+# Backups
+outputs/results_backup_*/
+acm_for_vast.zip
+swarm.zip
+acm.zip
 
 # Outputs
 outputs/checkpoints/
@@ -35,3 +42,5 @@ outputs/figures/
 outputs/results/
 .ipynb_checkpoints/
 .DS_Store
+_test_audio_upload/
+outputs/checkpoints_backup/

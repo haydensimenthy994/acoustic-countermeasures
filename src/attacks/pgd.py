@@ -4,63 +4,83 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-
-def compute_perturbation_metrics(original: torch.Tensor, perturbed: torch.Tensor) -> dict:
-    """Compute L2 norm, L-inf norm, and SNR of perturbation."""
-    perturbation = perturbed - original
-
-    # L2 norm (average across batch)
-    l2 = perturbation.norm(p=2, dim=-1).mean().item()
-
-    # L-inf norm (average across batch)
-    linf = perturbation.abs().max(dim=-1).values.mean().item()
-
-    # SNR in dB — only compute for samples with non-silent signal
-    signal_power = original.pow(2).mean(dim=-1)
-    noise_power = perturbation.pow(2).mean(dim=-1)
-
-    # Filter out silent samples (signal power too low)
-    valid_mask = signal_power > 1e-6
-    if valid_mask.sum() > 0:
-        snr_per_sample = 10 * torch.log10(
-            signal_power[valid_mask] / (noise_power[valid_mask] + 1e-10)
-        )
-        snr = snr_per_sample.mean().item()
-    else:
-        snr = float('nan')
-
-    return {"l2_norm": l2, "linf_norm": linf, "snr_db": snr}
+from src.attacks.fgsm import compute_perturbation_metrics
 
 
-def fgsm_attack(
+def pgd_attack(
     model: nn.Module,
     features: torch.Tensor,
     labels: torch.Tensor,
     epsilon: float = 0.01,
+    alpha: float = 0.001,
+    num_steps: int = 40,
     device: torch.device = torch.device("cpu"),
+    random_start: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Projected Gradient Descent (PGD) attack.
+
+    Args:
+        model: trained classifier
+        features: input waveform [batch, samples]
+        labels: true labels [batch]
+        epsilon: maximum perturbation magnitude (L-inf ball)
+        alpha: step size per iteration
+        num_steps: number of PGD iterations
+        device: torch device
+        random_start: if True, init delta uniformly in [-epsilon, epsilon];
+            if False, start from clean (delta=0). Use False for black-box
+            transfer sweeps so ASR varies with epsilon like FGSM.
+
+    Returns:
+        adv_features: adversarial examples
+        perturbation: total perturbation added
+    """
     model.eval()
-    # Clone so requires_grad is not left on dataloader / masked batch tensors.
-    features = features.detach().clone().to(device).requires_grad_(True)
+    features = features.detach().to(device)
     labels = labels.to(device)
-
     criterion = nn.CrossEntropyLoss()
-    logits = model(features)
-    loss = criterion(logits, labels)
-    grad = torch.autograd.grad(loss, features)[0]
 
-    perturbation = epsilon * grad.sign()
-    adv_features = features + perturbation
+    if random_start:
+        delta = torch.empty_like(features).uniform_(-epsilon, epsilon)
+    else:
+        delta = torch.zeros_like(features)
+    delta = delta.to(device)
 
-    return adv_features.detach(), perturbation.detach()
+    for _ in range(num_steps):
+        delta = delta.detach().requires_grad_(True)
+        adv_input = features + delta
+
+        logits = model(adv_input)
+        loss = criterion(logits, labels)
+        # Gradient w.r.t. perturbation only — do not call model.zero_grad(),
+        # which is unnecessary in eval mode and can interfere when the same
+        # model is used again for mel/target evaluation after the attack.
+        grad = torch.autograd.grad(loss, delta)[0]
+
+        delta = delta + alpha * grad.sign()
+        delta = torch.clamp(delta, -epsilon, epsilon).detach()
+
+    adv_features = (features + delta).detach()
+    perturbation = delta.detach()
+    return adv_features, perturbation
 
 
-def evaluate_fgsm(
+def evaluate_pgd(
     model: nn.Module,
     loader,
     epsilon: float = 0.01,
+    alpha: float = None,
+    num_steps: int = 40,
     device: torch.device = torch.device("cpu"),
 ) -> dict:
+    """
+    Run PGD attack over a dataloader and return metrics.
+    Alpha defaults to epsilon/10 if not specified.
+    """
+    if alpha is None:
+        alpha = epsilon / 10
+
     model.eval()
     total = 0
     correct_adv = 0
@@ -78,6 +98,7 @@ def evaluate_fgsm(
             clean_probs = torch.softmax(clean_logits, dim=1)
             clean_preds = clean_logits.argmax(dim=1)
 
+        # Only attack correctly classified samples
         correct_mask = clean_preds == labels
         if correct_mask.sum() == 0:
             continue
@@ -85,7 +106,10 @@ def evaluate_fgsm(
         features_correct = features[correct_mask]
         labels_correct = labels[correct_mask]
 
-        adv_features, _ = fgsm_attack(model, features_correct, labels_correct, epsilon, device)
+        adv_features, _ = pgd_attack(
+            model, features_correct, labels_correct,
+            epsilon=epsilon, alpha=alpha, num_steps=num_steps, device=device
+        )
 
         # Perturbation metrics
         metrics = compute_perturbation_metrics(features_correct, adv_features)
@@ -112,6 +136,8 @@ def evaluate_fgsm(
 
     return {
         "epsilon": epsilon,
+        "alpha": alpha,
+        "num_steps": num_steps,
         "total_samples": total,
         "attack_success_rate": asr,
         "adv_accuracy": correct_adv / total if total > 0 else 0.0,

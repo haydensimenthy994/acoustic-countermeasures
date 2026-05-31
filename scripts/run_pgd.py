@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from src.data.dataset import DroneAudioDataset
 from src.models.cnn14_proxy import CNN14ProxyClassifier
-from src.attacks.fgsm import evaluate_fgsm
+from src.attacks.pgd import evaluate_pgd
 from src.utils.seed import set_seed
 
 
@@ -26,7 +26,6 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load CNN14 model
     model = CNN14ProxyClassifier(
         num_classes=2,
         pretrained_path="outputs/checkpoints/Cnn14_16k_mAP=0.438.pth",
@@ -39,7 +38,6 @@ def main():
     model.eval()
     print("Loaded CNN14 model")
 
-    # Test dataset — raw waveform for CNN14
     split_csv = "data/metadata/split_metadata.csv"
     test_dataset = DroneAudioDataset(
         metadata_csv=split_csv,
@@ -51,15 +49,21 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False, num_workers=0)
     print(f"Test samples: {len(test_dataset)}")
 
+    # Same epsilons as FGSM for direct comparison
     epsilons = [0.001, 0.005, 0.01, 0.02, 0.05]
     all_results = []
 
-    print("\nFGSM Results (CNN14):")
+    print("\nPGD Results (CNN14, 40 steps):")
     print(f"{'Epsilon':<10} {'ASR':<10} {'Adv Acc':<10} {'Conf Drop':<12} {'Std Drop':<12} {'L2':<10} {'L-inf':<10} {'SNR(dB)':<10}")
     print("-" * 85)
 
     for eps in epsilons:
-        results = evaluate_fgsm(model, test_loader, epsilon=eps, device=device)
+        results = evaluate_pgd(
+            model, test_loader,
+            epsilon=eps,
+            num_steps=40,
+            device=device
+        )
         all_results.append(results)
         print(
             f"{results['epsilon']:<10.3f} "
@@ -72,15 +76,14 @@ def main():
             f"{results['avg_snr_db']:<10.2f}"
         )
 
-    # Save results
     output_dir = Path("outputs/results")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     df = pd.DataFrame(all_results)
-    csv_path = output_dir / "fgsm_results_cnn14.csv"
+    csv_path = output_dir / "pgd_results_cnn14.csv"
     df.to_csv(csv_path, index=False)
 
-    json_path = output_dir / "fgsm_results_cnn14.json"
+    json_path = output_dir / "pgd_results_cnn14.json"
     with open(json_path, "w") as f:
         json.dump(all_results, f, indent=2)
 

@@ -25,23 +25,17 @@ def evaluate(model, loader, criterion, device):
     total_loss = 0.0
     correct = 0
     total = 0
-
     with torch.no_grad():
         for batch in loader:
             features = batch["features"].to(device)
             labels = batch["label"].to(device)
-
             logits = model(features)
             loss = criterion(logits, labels)
-
             total_loss += loss.item() * len(labels)
             preds = logits.argmax(dim=1)
             correct += (preds == labels).sum().item()
             total += len(labels)
-
-    avg_loss = total_loss / total
-    accuracy = correct / total
-    return avg_loss, accuracy
+    return total_loss / total, correct / total
 
 
 def main() -> None:
@@ -49,6 +43,9 @@ def main() -> None:
     parser.add_argument("--data-config", default="configs/data.yaml")
     parser.add_argument("--model-config", default="configs/model.yaml")
     parser.add_argument("--train-config", default="configs/train.yaml")
+    parser.add_argument("--model-type", default="proxy_cnn",
+                        choices=["proxy_cnn", "cnn14"],
+                        help="Which model to train: proxy_cnn or cnn14")
     args = parser.parse_args()
 
     data_cfg = load_config(args.data_config)
@@ -60,35 +57,35 @@ def main() -> None:
 
     log_dir = Path("outputs/logs")
     log_dir.mkdir(parents=True, exist_ok=True)
-    logfile = get_log_file(str(log_dir), prefix="train")
+    logfile = get_log_file(str(log_dir), prefix=f"train_{args.model_type}")
     def logger_info(msg):
         log_line(msg, logfile)
-    logger_info("Starting training run")
 
-    # Device
+    logger_info(f"Starting training run — model: {args.model_type}")
+
     device_cfg = train_cfg["train"]["device"]
-    if device_cfg == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device(device_cfg)
+    device = torch.device("cuda" if (device_cfg == "auto" and torch.cuda.is_available()) else device_cfg if device_cfg != "auto" else "cpu")
     logger_info(f"Using device: {device}")
 
-    # Dataset
     split_csv = data_cfg["paths"]["master_metadata_csv"].replace(
         "master_metadata.csv", "split_metadata.csv"
     )
+
+    use_raw = (args.model_type == "cnn14")
 
     train_dataset = DroneAudioDataset(
         metadata_csv=split_csv,
         config_path=args.data_config,
         split="train",
         fixed_duration_sec=5.0,
+        use_raw_waveform=use_raw,
     )
     val_dataset = DroneAudioDataset(
         metadata_csv=split_csv,
         config_path=args.data_config,
         split="val",
         fixed_duration_sec=5.0,
+        use_raw_waveform=use_raw,
     )
 
     logger_info(f"Train samples: {len(train_dataset)} | Val samples: {len(val_dataset)}")
@@ -96,45 +93,46 @@ def main() -> None:
     batch_size = train_cfg["train"]["batch_size"]
     num_workers = train_cfg["train"]["num_workers"]
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                              num_workers=num_workers, pin_memory=(device.type == "cuda"))
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
+                            num_workers=num_workers, pin_memory=(device.type == "cuda"))
 
-    # Model
-    model = ProxyAudioCNN(
-        input_channels=model_cfg["model"]["input_channels"],
-        num_classes=model_cfg["model"]["num_classes"],
-        dropout=model_cfg["model"]["dropout"],
-    ).to(device)
-    logger_info(f"Model: {model_cfg['model']['name']}")
+    # Model selection
+    if args.model_type == "cnn14":
+        from src.models.cnn14_proxy import CNN14ProxyClassifier
+        model = CNN14ProxyClassifier(
+            num_classes=2,
+            pretrained_path="outputs/checkpoints/Cnn14_16k_mAP=0.438.pth",
+            freeze_base=False,
+        ).to(device)
+        lr = 1e-4  # Lower LR for fine-tuning
+        logger_info("Model: CNN14ProxyClassifier (PANNs fine-tune)")
+    else:
+        model = ProxyAudioCNN(
+            input_channels=model_cfg["model"]["input_channels"],
+            num_classes=model_cfg["model"]["num_classes"],
+            dropout=model_cfg["model"]["dropout"],
+        ).to(device)
+        lr = model_cfg["optimizer"]["lr"]
+        logger_info("Model: ProxyAudioCNN (scratch)")
 
-    # Loss, optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(
         model.parameters(),
-        lr=model_cfg["optimizer"]["lr"],
+        lr=lr,
         weight_decay=model_cfg["optimizer"]["weight_decay"],
     )
 
     epochs = train_cfg["train"]["epochs"]
     log_every = train_cfg["train"]["log_every"]
-    save_best_only = train_cfg["train"]["save_best_only"]
-
     checkpoint_dir = Path("outputs/checkpoints")
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     best_val_acc = 0.0
+    patience = 5  # Early stopping patience
+    epochs_no_improve = 0
+    ckpt_name = f"best_model_{args.model_type}.pt"
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -159,10 +157,9 @@ def main() -> None:
             total += len(labels)
 
             if step % log_every == 0:
-                running_acc = correct / total
                 logger_info(
                     f"Epoch {epoch} | Step {step}/{len(train_loader)} | "
-                    f"Loss: {loss.item():.4f} | Acc: {running_acc:.4f}"
+                    f"Loss: {loss.item():.4f} | Acc: {correct/total:.4f}"
                 )
 
         train_loss = epoch_loss / total
@@ -177,16 +174,18 @@ def main() -> None:
             f"Time: {elapsed:.1f}s"
         )
 
-        if save_best_only:
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
-                ckpt_path = checkpoint_dir / "best_model.pt"
-                torch.save(model.state_dict(), ckpt_path)
-                logger_info(f"Saved best model with val_acc={val_acc:.4f} to {ckpt_path}")
-        else:
-            ckpt_path = checkpoint_dir / f"model_epoch_{epoch}.pt"
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            epochs_no_improve = 0
+            ckpt_path = checkpoint_dir / ckpt_name
             torch.save(model.state_dict(), ckpt_path)
-            logger_info(f"Saved checkpoint to {ckpt_path}")
+            logger_info(f"Saved best model val_acc={val_acc:.4f} to {ckpt_path}")
+        else:
+            epochs_no_improve += 1
+            logger_info(f"No improvement for {epochs_no_improve}/{patience} epochs")
+            if epochs_no_improve >= patience:
+                logger_info(f"Early stopping triggered at epoch {epoch}")
+                break
 
     logger_info(f"Training complete. Best val accuracy: {best_val_acc:.4f}")
 

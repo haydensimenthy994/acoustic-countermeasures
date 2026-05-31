@@ -1,0 +1,67 @@
+[
+  {
+    "epsilon": 0.001,
+    "alpha": 0.0001,
+    "num_steps": 40,
+    "total_samples": 400,
+    "attack_success_rate": 0.99,
+    "adv_accuracy": 0.01,
+    "avg_confidence_drop": 0.9662166124306153,
+    "std_confidence_drop": 0.11524068362772655,
+    "avg_l2_norm": 0.19340841128275946,
+    "avg_linf_norm": 0.0010000198246696247,
+    "avg_snr_db": 41.732577103834885
+  },
+  {
+    "epsilon": 0.005,
+    "alpha": 0.0005,
+    "num_steps": 40,
+    "total_samples": 400,
+    "attack_success_rate": 1.0,
+    "adv_accuracy": 0.0,
+    "avg_confidence_drop": 0.9731350730254781,
+    "std_confidence_drop": 0.07699636211917303,
+    "avg_l2_norm": 0.9428822489885184,
+    "avg_linf_norm": 0.005000002574748718,
+    "avg_snr_db": 27.983404526343712
+  },
+  {
+    "epsilon": 0.01,
+    "alpha": 0.001,
+    "num_steps": 40,
+    "total_samples": 400,
+    "attack_success_rate": 1.0,
+    "adv_accuracy": 0.0,
+    "avg_confidence_drop": 0.9737606590849847,
+    "std_confidence_drop": 0.0745651578694872,
+    "avg_l2_norm": 1.8521082401275635,
+    "avg_linf_norm": 0.010000005149497436,
+    "avg_snr_db": 22.12352774693416
+  },
+  {
+    "epsilon": 0.02,
+    "alpha": 0.002,
+    "num_steps": 40,
+    "total_samples": 400,
+    "attack_success_rate": 1.0,
+    "adv_accuracy": 0.0,
+    "avg_confidence_drop": 0.9738859979486005,
+    "std_confidence_drop": 0.07415288617510367,
+    "avg_l2_norm": 3.635129772699796,
+    "avg_linf_norm": 0.020000010298994873,
+    "avg_snr_db": 16.270310181837814
+  },
+  {
+    "epsilon": 0.05,
+    "alpha": 0.005,
+    "num_steps": 40,
+    "total_samples": 400,
+    "attack_success_rate": 1.0,
+    "adv_accuracy": 0.0,
+    "avg_confidence_drop": 0.9738859979808331,
+    "std_confidence_drop": 0.07415288607561973,
+    "avg_l2_norm": 8.916579283200777,
+    "avg_linf_norm": 0.05000001292389173,
+    "avg_snr_db": 8.482147565254799
+  }
+]

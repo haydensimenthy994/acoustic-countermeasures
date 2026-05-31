@@ -1,0 +1,102 @@
+[
+  {
+    "snr_db": 40,
+    "accuracy": 0.937570303712036,
+    "asr": 0.06242969628796402,
+    "conditional_asr": 0.052706960756230305,
+    "clean_correct": 3491,
+    "flipped": 184,
+    "total": 3556,
+    "avg_confidence": 0.890764067265864
+  },
+  {
+    "snr_db": 35,
+    "accuracy": 0.8931383577052868,
+    "asr": 0.10686164229471318,
+    "conditional_asr": 0.09968490403895731,
+    "clean_correct": 3491,
+    "flipped": 348,
+    "total": 3556,
+    "avg_confidence": 0.8618167094258786
+  },
+  {
+    "snr_db": 30,
+    "accuracy": 0.8681102362204725,
+    "asr": 0.13188976377952755,
+    "conditional_asr": 0.12489258092237181,
+    "clean_correct": 3491,
+    "flipped": 436,
+    "total": 3556,
+    "avg_confidence": 0.8400324985593939
+  },
+  {
+    "snr_db": 25,
+    "accuracy": 0.8953880764904387,
+    "asr": 0.10461192350956128,
+    "conditional_asr": 0.09682039530220567,
+    "clean_correct": 3491,
+    "flipped": 338,
+    "total": 3556,
+    "avg_confidence": 0.8353528925255009
+  },
+  {
+    "snr_db": 20,
+    "accuracy": 0.9403824521934758,
+    "asr": 0.059617547806524174,
+    "conditional_asr": 0.05070180464050415,
+    "clean_correct": 3491,
+    "flipped": 177,
+    "total": 3556,
+    "avg_confidence": 0.8358681281291368
+  },
+  {
+    "snr_db": 15,
+    "accuracy": 0.9356017997750281,
+    "asr": 0.06439820022497189,
+    "conditional_asr": 0.05413921512460613,
+    "clean_correct": 3491,
+    "flipped": 189,
+    "total": 3556,
+    "avg_confidence": 0.8232058405481212
+  },
+  {
+    "snr_db": 10,
+    "accuracy": 0.9043869516310461,
+    "asr": 0.0956130483689539,
+    "conditional_asr": 0.08851331996562589,
+    "clean_correct": 3491,
+    "flipped": 309,
+    "total": 3556,
+    "avg_confidence": 0.7959788556014794
+  },
+  {
+    "snr_db": 5,
+    "accuracy": 0.8990438695163104,
+    "asr": 0.10095613048368957,
+    "conditional_asr": 0.09309653394442853,
+    "clean_correct": 3491,
+    "flipped": 325,
+    "total": 3556,
+    "avg_confidence": 0.7590962742550635
+  },
+  {
+    "snr_db": 0,
+    "accuracy": 0.891169853768279,
+    "asr": 0.10883014623172105,
+    "conditional_asr": 0.10254941277570896,
+    "clean_correct": 3491,
+    "flipped": 358,
+    "total": 3556,
+    "avg_confidence": 0.6987884244551574
+  },
+  {
+    "snr_db": -5,
+    "accuracy": 0.8267716535433071,
+    "asr": 0.17322834645669294,
+    "conditional_asr": 0.1681466628473217,
+    "clean_correct": 3491,
+    "flipped": 587,
+    "total": 3556,
+    "avg_confidence": 0.6066171236106854
+  }
+]

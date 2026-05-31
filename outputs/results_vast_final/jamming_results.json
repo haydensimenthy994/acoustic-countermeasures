@@ -1,0 +1,102 @@
+[
+  {
+    "snr_db": 40,
+    "accuracy": 0.926829268292683,
+    "asr": 0.07317073170731703,
+    "conditional_asr": 0.07,
+    "clean_correct": 400,
+    "flipped": 28,
+    "total": 410,
+    "avg_confidence": 0.8317868124784493
+  },
+  {
+    "snr_db": 35,
+    "accuracy": 0.9243902439024391,
+    "asr": 0.07560975609756093,
+    "conditional_asr": 0.065,
+    "clean_correct": 400,
+    "flipped": 26,
+    "total": 410,
+    "avg_confidence": 0.8226893685621822
+  },
+  {
+    "snr_db": 30,
+    "accuracy": 0.926829268292683,
+    "asr": 0.07317073170731703,
+    "conditional_asr": 0.0625,
+    "clean_correct": 400,
+    "flipped": 25,
+    "total": 410,
+    "avg_confidence": 0.8188330205838855
+  },
+  {
+    "snr_db": 25,
+    "accuracy": 0.8804878048780488,
+    "asr": 0.11951219512195121,
+    "conditional_asr": 0.105,
+    "clean_correct": 400,
+    "flipped": 42,
+    "total": 410,
+    "avg_confidence": 0.8031215891242027
+  },
+  {
+    "snr_db": 20,
+    "accuracy": 0.8219512195121951,
+    "asr": 0.17804878048780493,
+    "conditional_asr": 0.165,
+    "clean_correct": 400,
+    "flipped": 66,
+    "total": 410,
+    "avg_confidence": 0.7809598456613901
+  },
+  {
+    "snr_db": 15,
+    "accuracy": 0.8048780487804879,
+    "asr": 0.19512195121951215,
+    "conditional_asr": 0.185,
+    "clean_correct": 400,
+    "flipped": 74,
+    "total": 410,
+    "avg_confidence": 0.7587326982035869
+  },
+  {
+    "snr_db": 10,
+    "accuracy": 0.7780487804878049,
+    "asr": 0.2219512195121951,
+    "conditional_asr": 0.2125,
+    "clean_correct": 400,
+    "flipped": 85,
+    "total": 410,
+    "avg_confidence": 0.733108463519957
+  },
+  {
+    "snr_db": 5,
+    "accuracy": 0.7390243902439024,
+    "asr": 0.26097560975609757,
+    "conditional_asr": 0.2525,
+    "clean_correct": 400,
+    "flipped": 101,
+    "total": 410,
+    "avg_confidence": 0.6977777507065273
+  },
+  {
+    "snr_db": 0,
+    "accuracy": 0.6536585365853659,
+    "asr": 0.3463414634146341,
+    "conditional_asr": 0.3325,
+    "clean_correct": 400,
+    "flipped": 133,
+    "total": 410,
+    "avg_confidence": 0.6395964745523
+  },
+  {
+    "snr_db": -5,
+    "accuracy": 0.6,
+    "asr": 0.4,
+    "conditional_asr": 0.385,
+    "clean_correct": 400,
+    "flipped": 154,
+    "total": 410,
+    "avg_confidence": 0.574466374276558
+  }
+]
