@@ -6,9 +6,14 @@ Build a baseline drone-vs-non-drone acoustic proxy classifier using public datas
 ## Current status
 Phases 1–6 complete. Two classifiers trained (ProxyAudioCNN scratch on
 log-mel; CNN14ProxyClassifier fine-tuned from PANNs on raw waveform).
-FGSM, PGD, EOT-PGD, jamming, and acoustic-spoofing baselines run.
-Black-box transfer (CNN14 → ProxyAudioCNN) evaluated. All six thesis
-figures generated from saved CSVs/JSONs.
+In-distribution white-box attacks (FGSM, PGD, EOT-PGD at five ε values),
+jamming, and acoustic-spoofing baselines are run. Black-box transfer
+(CNN14 → ProxyAudioCNN) is evaluated for FGSM, PGD, and EOT-PGD.
+Cross-dataset evaluation on SWARM-AUDIO-DATASET covers clean accuracy,
+white-box attacks (FGSM, PGD, EOT-PGD), baselines, and black-box transfer
+(PGD and EOT-PGD). Thesis figures are generated from saved CSVs/JSONs.
+
+Frozen result snapshots live in `outputs/results_vast_final/`.
 
 ### Reproducibility / correctness notes (May 2026 audit)
 After a code review of the result files, the following were addressed:
@@ -29,6 +34,13 @@ After a code review of the result files, the following were addressed:
   branch of `scripts/run_blackbox_transfer.py`.
 - The RIR bank is now generated with a fixed seed
   (`build_rir_bank(seed=42)`), so EOT-PGD runs are bit-reproducible.
+- Black-box PGD/EOT transfer uses clean-start attacks
+  (`random_start=False` in `scripts/run_blackbox_transfer.py` and the
+  cross-dataset transfer runners) so perturbations are crafted from
+  clean audio rather than random L∞ noise inside the ε-ball.
+- Attack loops use `torch.autograd.grad` on the perturbation tensor
+  instead of `model.zero_grad()` + `loss.backward()`, avoiding side
+  effects when the same model is reused for mel/target evaluation.
 - `set_seed(42)` is called at the top of every `scripts/run_*.py`
   attack and baseline script.
 - `scripts/check_duration_leakage.py` audits whether drone vs
@@ -53,8 +65,44 @@ After a code review of the result files, the following were addressed:
 - `src/attacks/` — adversarial attack implementations
 - `src/simulation/` — over-the-air / acoustic simulation components
 - `src/utils/` — utilities such as logging and reproducibility
-- `scripts/` — smoke tests and helper scripts
+- `scripts/` — experiment runners and helper scripts
 - `outputs/` — checkpoints, logs, figures, and experiment results
+- `outputs/results_vast_final/` — frozen thesis result CSVs/JSONs
+
+## Key experiment scripts
+
+In-distribution (400-sample test split, `data/metadata/split_metadata.csv`):
+
+| Script | Output |
+|--------|--------|
+| `scripts/run_fgsm.py` | `outputs/results/fgsm_results_cnn14.csv` |
+| `scripts/run_pgd.py` | `outputs/results/pgd_results_cnn14.csv` |
+| `scripts/run_eot_pgd.py` | `outputs/results/eot_pgd_results_cnn14.csv` |
+| `scripts/run_blackbox_transfer.py` | FGSM, PGD, and EOT transfer CSVs |
+| `scripts/run_blackbox_pgd_transfer.py` | `blackbox_pgd_transfer.csv` only |
+| `scripts/run_blackbox_eot_transfer.py` | `blackbox_eot_transfer.csv` only |
+
+SWARM cross-dataset (`data/metadata/swarm_test_manifest.csv` from
+`scripts/build_swarm_manifest.py`):
+
+| Script | Output |
+|--------|--------|
+| `scripts/evaluate_cross_dataset.py` | `cross_dataset_swarm.csv` |
+| `scripts/run_cross_dataset_attacks.py` | `cross_dataset_attacks.csv` |
+| `scripts/run_cross_dataset_transfer.py` | `cross_dataset_transfer.csv` |
+| `scripts/run_cross_dataset_baselines.py` | `cross_dataset_jamming.csv`, `cross_dataset_spoofing.csv` |
+| `scripts/generate_cross_figures.py` | cross-dataset thesis figures |
+
+Long EOT and cross-dataset sweeps support `--resume` and `--epsilons`
+(comma-separated) so interrupted runs skip completed ε values.
+
+Example:
+
+```powershell
+python scripts/run_eot_pgd.py --epsilons 0.001,0.005,0.01,0.02,0.05 --resume
+python scripts/run_cross_dataset_attacks.py --attacks EOT-PGD --resume
+python scripts/run_cross_dataset_transfer.py --attacks PGD,EOT-PGD --resume
+```
 
 ## Environment setup
 Create and activate a virtual environment, then install dependencies:
@@ -63,3 +111,10 @@ Create and activate a virtual environment, then install dependencies:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+```
+
+EOT-PGD also requires `pyroomacoustics`:
+
+```powershell
+pip install pyroomacoustics
+```
