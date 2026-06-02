@@ -1,44 +1,10 @@
-"""
-Cross-dataset adversarial robustness on SWARM-AUDIO-DATASET.
+"""White-box FGSM/PGD on the CNN14 against SWARM.
 
-Crafts FGSM and PGD adversarial waveforms against the existing CNN14
-classifier (white-box) and reports conditional Attack Success Rate
-(ASR) per source corpus and per drone type.
-
-Why:
-  Clean-accuracy generalisation was measured by
-  scripts/evaluate_cross_dataset.py. This script answers the
-  complementary question: do gradient-based attacks crafted on CNN14
-  also succeed on a corpus the model has never seen during training?
-  Per-source breakdown lets us separate "attack works on familiar
-  acoustic conditions" from "attack works on out-of-distribution
-  drone families".
-
-Methodology:
-  - Conditional ASR: only samples the model classifies CORRECTLY on
-    clean input contribute to the denominator, so ASR is comparable
-    across slices with very different clean accuracies (eg. Trident
-    34 % clean accuracy means we attack only the ~15 correctly-
-    classified Trident clips).
-  - Untargeted attack on the true label: for drone clips this is a
-    miss attack (drone -> no_drone); for no_drone clips it is a
-    false-alarm attack (no_drone -> drone). Reported separately.
-  - PGD num_steps reduced from 40 to 20 to keep wall-clock under
-    one hour. PGD with 20 steps is the Madry-et-al. canonical
-    setting and yields ASR within ~1 % of 40 steps on this task.
-
-Inputs:
-  data/metadata/swarm_test_manifest.csv    (build_swarm_manifest.py)
-  outputs/checkpoints/best_model_cnn14.pt
-
-Outputs:
-  outputs/results/cross_dataset_attacks.csv   per-(attack, eps, slice)
-  outputs/results/cross_dataset_attacks.json  same data, nested
-  outputs/results/cross_dataset_attacks_per_sample.csv
-                                              one row per (clip, attack, eps)
-
-Usage:
-  python scripts/run_cross_dataset_attacks.py
+Sister script to evaluate_cross_dataset.py: that one measures clean accuracy
+on unseen data, this one measures attack success. Conditional ASR is used
+throughout so slices with very different clean accuracies (e.g. Trident at
+~34%) stay comparable. PGD is run at 20 steps — the Madry canonical setting,
+within ~1% of 40 steps on this task and much faster.
 """
 from __future__ import annotations
 
@@ -71,13 +37,9 @@ DEFAULT_EPSILONS    = [0.001, 0.005, 0.01, 0.02, 0.05]
 DEFAULT_PGD_STEPS   = 20
 DEFAULT_EOT_STEPS   = 20
 DEFAULT_EOT_SAMPLES = 5
-DEFAULT_BATCH_SIZE  = 8   # smaller batch for EOT-PGD VRAM
+DEFAULT_BATCH_SIZE  = 8   # EOT-PGD is the VRAM bottleneck.
 MANIFEST            = "data/metadata/swarm_test_manifest.csv"
 
-
-# ---------------------------------------------------------------------------
-# Per-sample evaluation that retains filepaths for later metadata join
-# ---------------------------------------------------------------------------
 
 def _attack_pass(
     model: torch.nn.Module,
@@ -90,8 +52,7 @@ def _attack_pass(
     num_eot_samples: int = DEFAULT_EOT_SAMPLES,
     rir_kernels: torch.Tensor | None = None,
 ) -> list[dict]:
-    """Run one (attack, epsilon) pass over the loader. Returns one row
-    per *clean-correct* sample with adversarial-prediction metadata."""
+    """One (attack, eps) sweep — one row per clean-correct sample, with filepath."""
     rows: list[dict] = []
     snr_accum: list[float] = []
     l2_accum:  list[float] = []
@@ -165,10 +126,6 @@ def _attack_pass(
     return rows
 
 
-# ---------------------------------------------------------------------------
-# Aggregation
-# ---------------------------------------------------------------------------
-
 def _binom_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     if n == 0:
         return (0.0, 0.0)
@@ -180,7 +137,7 @@ def _binom_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 
 
 def _slice_asr(slice_df: pd.DataFrame) -> dict:
-    """Conditional ASR over a (attack, eps, slice) sub-frame."""
+    """Conditional ASR + Wilson CI for one (attack, eps, slice) sub-frame."""
     n = len(slice_df)
     if n == 0:
         return {"n": 0, "asr": float("nan"),
@@ -193,10 +150,9 @@ def _slice_asr(slice_df: pd.DataFrame) -> dict:
 
 
 def _aggregate(per_sample: pd.DataFrame, manifest: pd.DataFrame) -> tuple[dict, pd.DataFrame]:
-    """Build nested report and flat CSV."""
-    # Normalise path separators on both sides so the join survives
-    # the round-trip through Path() inside the dataset class (which
-    # turns forward slashes into backslashes on Windows).
+    """Build the nested report and the flat-CSV view from the per-sample frame."""
+    # Forward-slash both sides — the dataset round-trips paths through Path()
+    # which mangles separators on Windows, so the join would otherwise miss.
     per_sample = per_sample.copy()
     per_sample["filepath"] = per_sample["filepath"].str.replace("\\", "/", regex=False)
     manifest_norm = manifest.copy()
@@ -225,7 +181,6 @@ def _aggregate(per_sample: pd.DataFrame, manifest: pd.DataFrame) -> tuple[dict, 
             **_slice_asr(sub),
         })
 
-        # By true label (drone vs no_drone)
         for label, sub_l in sub.groupby("label"):
             s = _slice_asr(sub_l)
             nested["by_attack_eps"][key]["by_label"][str(label)] = s
@@ -234,7 +189,6 @@ def _aggregate(per_sample: pd.DataFrame, manifest: pd.DataFrame) -> tuple[dict, 
                 "scope": "label", "slice": str(label), **s,
             })
 
-        # By source corpus
         for src, sub_s in sub.groupby("source_dataset"):
             s = _slice_asr(sub_s)
             nested["by_attack_eps"][key]["by_source"][str(src)] = s
@@ -243,7 +197,6 @@ def _aggregate(per_sample: pd.DataFrame, manifest: pd.DataFrame) -> tuple[dict, 
                 "scope": "source_dataset", "slice": str(src), **s,
             })
 
-        # By drone type (drones-only)
         drones = sub[sub["label"] == "drone"]
         for dt, sub_d in drones.groupby("drone_type"):
             s = _slice_asr(sub_d)
@@ -254,16 +207,12 @@ def _aggregate(per_sample: pd.DataFrame, manifest: pd.DataFrame) -> tuple[dict, 
             })
 
     flat = pd.DataFrame(flat_rows)
-    # Expand CI tuple into two columns for easier plotting.
+    # Split the CI tuple into two columns so it's easier to plot from.
     flat["asr_ci_lo"] = flat["asr_ci95"].apply(lambda x: x[0])
     flat["asr_ci_hi"] = flat["asr_ci95"].apply(lambda x: x[1])
     flat = flat.drop(columns=["asr_ci95"])
     return nested, flat
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -386,14 +335,13 @@ def main() -> None:
                 rir_kernels=rir_kernels,
             )
             all_rows.extend(rows)
-            # Incremental save -- kill-resilient.
+            # Save after every (attack, eps) so a Ctrl+C doesn't lose progress.
             pd.DataFrame(all_rows).to_csv(per_sample_csv, index=False)
             nested, flat = _aggregate(pd.DataFrame(all_rows), manifest_df)
             flat.to_csv(flat_csv, index=False)
             with open(nested_json, "w") as f:
                 json.dump(nested, f, indent=2)
 
-    # Final report -----------------------------------------------------------
     nested, flat = _aggregate(pd.DataFrame(all_rows), manifest_df)
     print("\n" + "=" * 78)
     print("CROSS-DATASET CONDITIONAL ASR (CNN14 white-box on SWARM)")

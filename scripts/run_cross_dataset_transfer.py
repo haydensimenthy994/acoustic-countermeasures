@@ -1,27 +1,7 @@
-"""
-Cross-dataset black-box transferability (CNN14 -> ProxyAudioCNN) on SWARM.
+"""run_blackbox_transfer.py, but on the SWARM cross-dataset manifest.
 
-Re-crafts FGSM adversarial waveforms against the white-box CNN14 source
-model on the held-out SWARM corpus, converts them to log-mel
-spectrograms with the EXACT transform used to train ProxyAudioCNN,
-and reports cross-dataset transfer ASR with per-source breakdowns.
-
-Mirrors the FGSM branch of scripts/run_blackbox_transfer.py but uses
-the SWARM manifest as the evaluation corpus.
-
-Inputs:
-  data/metadata/swarm_test_manifest.csv      (build_swarm_manifest.py)
-  outputs/checkpoints/best_model_cnn14.pt    (source / white-box)
-  outputs/checkpoints/best_model.pt          (target / black-box)
-
-Outputs:
-  outputs/results/cross_dataset_transfer.csv          flat
-  outputs/results/cross_dataset_transfer.json         nested
-  outputs/results/cross_dataset_transfer_per_sample.csv
-
-Usage:
-  python scripts/run_cross_dataset_transfer.py
-  python scripts/run_cross_dataset_transfer.py --epsilons 0.001,0.01,0.05
+Same CNN14 -> ProxyAudioCNN setup; reports transfer ASR with per-source
+breakdowns so the in-dist vs cross-dataset gap is visible directly.
 """
 from __future__ import annotations
 
@@ -60,10 +40,6 @@ DEFAULT_BATCH_SIZE  = 8
 MANIFEST            = "data/metadata/swarm_test_manifest.csv"
 
 
-# ---------------------------------------------------------------------------
-# One pass through the loader for a given epsilon
-# ---------------------------------------------------------------------------
-
 def _transfer_pass(
     source: torch.nn.Module,
     target: torch.nn.Module,
@@ -77,8 +53,11 @@ def _transfer_pass(
     num_eot_samples: int = DEFAULT_EOT_SAMPLES,
     rir_kernels: torch.Tensor | None = None,
 ) -> list[dict]:
-    """Returns one row per *source-correct* clip with the target
-    model's adversarial prediction (raw -> mel -> ProxyAudioCNN)."""
+    """One pass over the loader at a single (attack, eps).
+
+    One row per source-correct clip; `adv_pred` is the target's prediction
+    after raw -> mel -> ProxyAudioCNN.
+    """
     attack_key = f"{attack}_transfer"
     rows: list[dict] = []
     snr_accum: list[float] = []
@@ -144,9 +123,8 @@ def _transfer_pass(
     return rows
 
 
-# ---------------------------------------------------------------------------
-# Aggregation (same logic as run_cross_dataset_attacks.py)
-# ---------------------------------------------------------------------------
+# Aggregation mirrors run_cross_dataset_attacks.py — kept here so this
+# script stays runnable without importing from the other one.
 
 def _binom_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     if n == 0:
@@ -213,10 +191,6 @@ def _aggregate(per_sample: pd.DataFrame, manifest: pd.DataFrame) -> tuple[dict, 
     flat_df = flat_df.drop(columns=["asr_ci95"])
     return nested, flat_df
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -350,7 +324,6 @@ def main() -> None:
             with open(nested_json, "w") as f:
                 json.dump(nested, f, indent=2)
 
-    # Final report -----------------------------------------------------------
     nested, flat = _aggregate(pd.DataFrame(all_rows), manifest_df)
     print("\n" + "=" * 78)
     print("CROSS-DATASET CNN14 -> ProxyAudioCNN TRANSFER ASR")
@@ -377,7 +350,7 @@ def main() -> None:
                   f"{_fmt(src.get('trident', empty)):<22} "
                   f"{_fmt(src.get('wildlife_xenocanto', empty)):<22}")
 
-    # Side-by-side comparison with white-box if it exists
+    # If the white-box cross-dataset run exists, print BB vs WB side-by-side.
     wb_csv = out_dir / "cross_dataset_attacks.csv"
     if wb_csv.exists() and "FGSM" in attacks:
         wb = pd.read_csv(wb_csv)

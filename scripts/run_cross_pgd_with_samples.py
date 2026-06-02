@@ -1,11 +1,7 @@
-"""
-PGD at ε=0.001 on SWARM (clean-correct only) — saves confidences + one
-waveform pair for cross-dataset fig 4 / fig 6.
+"""PGD at eps=0.001 on SWARM, saving per-sample confidences and one
+clean/adv waveform pair for the cross-dataset fig 4 and fig 6.
 
-Matches run_cross_dataset_attacks.py: 20 PGD steps, swarm manifest, seed 42.
-
-Run:
-    python scripts/run_cross_pgd_with_samples.py
+Settings match run_cross_dataset_attacks.py (20 steps, seed 42).
 """
 from __future__ import annotations
 

@@ -17,24 +17,10 @@ def pgd_attack(
     device: torch.device = torch.device("cpu"),
     random_start: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """
-    Projected Gradient Descent (PGD) attack.
+    """PGD attack inside an L-inf ball of radius epsilon.
 
-    Args:
-        model: trained classifier
-        features: input waveform [batch, samples]
-        labels: true labels [batch]
-        epsilon: maximum perturbation magnitude (L-inf ball)
-        alpha: step size per iteration
-        num_steps: number of PGD iterations
-        device: torch device
-        random_start: if True, init delta uniformly in [-epsilon, epsilon];
-            if False, start from clean (delta=0). Use False for black-box
-            transfer sweeps so ASR varies with epsilon like FGSM.
-
-    Returns:
-        adv_features: adversarial examples
-        perturbation: total perturbation added
+    Set `random_start=False` for black-box transfer sweeps so ASR scales
+    monotonically with epsilon (otherwise the random init muddies the curve).
     """
     model.eval()
     features = features.detach().to(device)
@@ -53,9 +39,8 @@ def pgd_attack(
 
         logits = model(adv_input)
         loss = criterion(logits, labels)
-        # Gradient w.r.t. perturbation only — do not call model.zero_grad(),
-        # which is unnecessary in eval mode and can interfere when the same
-        # model is used again for mel/target evaluation after the attack.
+        # Only take grad w.r.t. delta — don't zero model grads, the caller
+        # may want them for downstream evaluation.
         grad = torch.autograd.grad(loss, delta)[0]
 
         delta = delta + alpha * grad.sign()
@@ -74,10 +59,7 @@ def evaluate_pgd(
     num_steps: int = 40,
     device: torch.device = torch.device("cpu"),
 ) -> dict:
-    """
-    Run PGD attack over a dataloader and return metrics.
-    Alpha defaults to epsilon/10 if not specified.
-    """
+    """Run PGD over a loader. Alpha defaults to epsilon/10."""
     if alpha is None:
         alpha = epsilon / 10
 
@@ -98,7 +80,7 @@ def evaluate_pgd(
             clean_probs = torch.softmax(clean_logits, dim=1)
             clean_preds = clean_logits.argmax(dim=1)
 
-        # Only attack correctly classified samples
+        # Only attack samples the model already gets right.
         correct_mask = clean_preds == labels
         if correct_mask.sum() == 0:
             continue
@@ -111,7 +93,6 @@ def evaluate_pgd(
             epsilon=epsilon, alpha=alpha, num_steps=num_steps, device=device
         )
 
-        # Perturbation metrics
         metrics = compute_perturbation_metrics(features_correct, adv_features)
         l2_norms.append(metrics["l2_norm"])
         linf_norms.append(metrics["linf_norm"])

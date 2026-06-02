@@ -1,14 +1,6 @@
-"""
-Figure 4: Confidence drop histogram — clean vs PGD adversarial.
+"""Figure 4 — confidence histogram for the correct class, clean vs PGD.
 
-Shows the distribution shift in classifier confidence for the correct
-class, before and after the PGD attack.
-
-INPUT:
-    outputs/results/pgd_samples_eps0.001.npz   (from PGDSampleLogger)
-
-If this file does not exist, re-run your PGD attack once with the
-PGDSampleLogger patch applied (see src/attacks/_pgd_logging.py).
+Needs the .npz that PGDSampleLogger drops during PGD eval.
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,7 +20,7 @@ def plot_confidence_histogram(
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
 
-    # --- left: overlaid histograms ---
+    # (a) overlaid distributions
     ax = axes[0]
     bins = np.linspace(0, 1, 41)
     ax.hist(clean_conf, bins=bins,
@@ -47,7 +39,7 @@ def plot_confidence_histogram(
     ax.set_xlim(0, 1)
     ax.legend(loc="upper center")
 
-    # --- right: per-sample drop histogram ---
+    # (b) per-sample drop
     ax = axes[1]
     drop = clean_conf - adv_conf
     ax.hist(drop, bins=40, color=COLORS["pgd"], alpha=0.75, edgecolor="white")

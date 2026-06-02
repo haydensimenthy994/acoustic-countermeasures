@@ -1,10 +1,4 @@
-"""
-Cross-dataset Figure 4: confidence shift under PGD on SWARM.
-
-INPUT:
-    outputs/results/cross_pgd_samples_eps0.001.npz
-    (from scripts/run_cross_pgd_with_samples.py)
-"""
+"""Cross-dataset Figure 4 — PGD confidence shift on SWARM."""
 from __future__ import annotations
 
 import numpy as np

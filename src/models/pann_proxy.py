@@ -37,14 +37,8 @@ class ProxyAudioCNN(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        x: [batch, n_mels, time]
-        returns: [batch, num_classes]
-        """
         if x.ndim != 3:
             raise ValueError(f"Expected input shape [batch, n_mels, time], got {x.shape}")
-
-        x = x.unsqueeze(1)  # [batch, 1, n_mels, time]
+        x = x.unsqueeze(1)
         x = self.features(x)
-        x = self.classifier(x)
-        return x
+        return self.classifier(x)

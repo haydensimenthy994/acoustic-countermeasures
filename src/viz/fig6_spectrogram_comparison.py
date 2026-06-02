@@ -1,18 +1,6 @@
-"""
-Figure 6: Mel-spectrogram comparison — clean vs PGD adversarial vs perturbation.
+"""Figure 6 — clean vs PGD-adversarial mel-spectrograms, plus the residual.
 
-Three-panel plot showing (a) the clean drone audio, (b) the PGD
-adversarial version, and (c) the difference (the perturbation itself).
-Demonstrates how the attack is imperceptible in the spectrogram domain.
-
-INPUT:
-    outputs/results/pgd_samples_eps0.001.npz
-
-The .npz must contain example_clean and example_adv waveform arrays
-(saved by scripts/run_pgd_with_samples.py).
-
-The clip is auto-cropped to the non-silent region so that zero-padding
-does not dominate the colour scale.
+Reads the example clip pair saved by scripts/run_pgd_with_samples.py.
 """
 import numpy as np
 import torch
@@ -23,7 +11,7 @@ from src.viz.style import apply_style, save_fig
 
 
 def compute_mel(waveform, sr=16000, n_mels=64, n_fft=400, hop_length=160):
-    """Log-mel spectrogram matching your LogMelSpectrogram transform."""
+    """Log-mel matching src.features.spectrograms.LogMelSpectrogram."""
     if waveform.ndim == 1:
         waveform = waveform[None, :]
     w = torch.as_tensor(waveform, dtype=torch.float32)
@@ -53,15 +41,13 @@ def plot_spectrogram_comparison(
             "Re-run scripts/run_pgd_with_samples.py — no drone sample flipped."
         )
 
-    # --- crop to the non-silent region ------------------------------------
-    # Find where the signal actually is (above 1% of peak amplitude).
-    # This removes the zero-padding that DroneAudioDataset applies to
-    # short clips, which would otherwise dominate the colour scale.
+    # Trim off the zero-padding that DroneAudioDataset adds to short clips;
+    # otherwise the silent region dominates the colour scale.
     abs_clean = np.abs(clean)
     threshold = abs_clean.max() * 0.01
     nonzero = np.where(abs_clean > threshold)[0]
     if len(nonzero) > 0:
-        pad = int(0.01 * sr)                         # 10 ms padding either side
+        pad = int(0.01 * sr)  # leave 10 ms either side
         start = max(0, nonzero[0] - pad)
         end   = min(len(clean), nonzero[-1] + pad)
         clean = clean[start:end]
@@ -74,7 +60,7 @@ def plot_spectrogram_comparison(
     mel_adv     = compute_mel(adv,     sr=sr)
     mel_perturb = compute_mel(perturb, sr=sr)
 
-    # share colour range between clean and adv for fair comparison
+    # Same vmin/vmax across (a) and (b) so the comparison is honest.
     combined = np.concatenate([mel_clean.ravel(), mel_adv.ravel()])
     vmin = float(np.percentile(combined,  2))
     vmax = float(np.percentile(combined, 99))
@@ -106,8 +92,7 @@ def plot_spectrogram_comparison(
     for ax in axes:
         ax.grid(False)
 
-    # Overall subtitle with waveform-domain stats (recomputed on the
-    # cropped region so they reflect the actual audible signal).
+    # Recompute the L2/L-inf/SNR on the cropped region, not the padded clip.
     l2 = float(np.linalg.norm(perturb))
     linf = float(np.max(np.abs(perturb)))
     sig_power = float(np.mean(clean ** 2) + 1e-12)

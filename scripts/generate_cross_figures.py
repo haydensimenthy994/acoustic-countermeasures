@@ -1,14 +1,4 @@
-"""
-Generate cross-dataset thesis figures (fig2–fig6) for SWARM.
-
-Prerequisites:
-  - Cross experiment CSVs/JSON in outputs/results/
-  - outputs/results/cross_pgd_samples_eps0.001.npz
-    (python scripts/run_cross_pgd_with_samples.py)
-
-Usage:
-    python scripts/generate_cross_figures.py
-"""
+"""Regenerate the cross-dataset figures (fig2–fig6) for SWARM."""
 from __future__ import annotations
 
 import os

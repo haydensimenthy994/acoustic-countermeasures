@@ -1,30 +1,6 @@
-"""
-Figure 1: Training accuracy/loss curves — CNN14 vs scratch CNN.
+"""Figure 1 — training curves: CNN14 fine-tune vs scratch ProxyAudioCNN.
 
-Produces a 2x2 panel:
-    top-left:  loss vs epoch (both models, train + val)
-    top-right: accuracy vs epoch (both models, train + val)
-    bottom-left: zoomed val-accuracy comparison
-    bottom-right: text summary of final/best metrics
-
-INPUT FILES EXPECTED:
-    outputs/logs/training_metrics_cnn14.json
-    outputs/logs/training_metrics_scratch.json
-
-Each JSON must have the form:
-{
-    "run_name": "cnn14",
-    "epochs": [1, 2, ...],
-    "train_loss": [...],
-    "train_acc":  [...],
-    "val_loss":   [...],
-    "val_acc":    [...],
-    "best_val_acc": 0.9829,
-    "best_epoch": 7
-}
-
-If you don't have these JSONs, use scripts/parse_train_log.py first
-to generate them from your existing train_*.log files.
+Reads the JSONs that scripts/parse_train_log.py produces from the train logs.
 """
 import json
 from pathlib import Path
@@ -49,7 +25,7 @@ def plot_training_curves(
 
     fig, axes = plt.subplots(2, 2, figsize=(11, 8))
 
-    # --- top-left: loss ---
+    # (a) loss
     ax = axes[0, 0]
     ax.plot(cnn14["epochs"], cnn14["train_loss"],
             color=COLORS["cnn14"], linestyle="-",  label="CNN14 train")
@@ -64,7 +40,7 @@ def plot_training_curves(
     ax.set_title("(a) Loss over epochs")
     ax.legend(loc="upper right")
 
-    # --- top-right: accuracy ---
+    # (b) accuracy
     ax = axes[0, 1]
     ax.plot(cnn14["epochs"], cnn14["train_acc"],
             color=COLORS["cnn14"], linestyle="-",  label="CNN14 train")
@@ -80,13 +56,12 @@ def plot_training_curves(
     ax.set_ylim(0.4, 1.02)
     ax.legend(loc="lower right")
 
-    # --- bottom-left: val-accuracy zoom ---
+    # (c) val accuracy zoom
     ax = axes[1, 0]
     ax.plot(cnn14["epochs"],  cnn14["val_acc"],
             color=COLORS["cnn14"],   marker="o", label="CNN14 val")
     ax.plot(scratch["epochs"], scratch["val_acc"],
             color=COLORS["scratch"], marker="s", label="Scratch val")
-    # mark best points
     ax.axhline(cnn14["best_val_acc"], color=COLORS["cnn14"],
                linestyle=":", alpha=0.5)
     ax.axhline(scratch["best_val_acc"], color=COLORS["scratch"],
@@ -96,7 +71,7 @@ def plot_training_curves(
     ax.set_title("(c) Validation accuracy — zoomed")
     ax.legend(loc="lower right")
 
-    # --- bottom-right: summary table ---
+    # (d) summary text
     ax = axes[1, 1]
     ax.axis("off")
     summary = (

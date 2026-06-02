@@ -1,16 +1,6 @@
-"""
-PATCH for src/attacks/pgd.py
+"""Per-sample logger used inside the PGD eval loop.
 
-Add this block INSIDE your PGD evaluation loop — wherever you currently
-aggregate results. Saves per-sample clean/adv confidences AND one example
-clean+adversarial waveform for use by figures 4 and 6.
-
-INTEGRATION NOTES:
-  Your existing evaluate() function presumably iterates over the test set
-  producing (clean_audio, adv_audio, clean_logits, adv_logits, labels).
-  Inside that loop, collect them. After the loop, dump a .npz.
-
-Drop this file in as src/attacks/_pgd_logging.py and call from pgd.py.
+Feeds figures 4 (confidence histogram) and 6 (clean-vs-adv waveform pair).
 """
 import numpy as np
 import torch
@@ -18,34 +8,12 @@ from pathlib import Path
 
 
 class PGDSampleLogger:
-    """
-    Collects per-sample data during PGD evaluation, saves one .npz at the end.
-
-    Usage inside your PGD evaluate() function:
-
-        logger = PGDSampleLogger(epsilon=eps)
-        for batch in loader:
-            clean = batch["waveform"]
-            label = batch["label"]
-            adv   = pgd_attack(model, clean, label, eps, ...)
-
-            with torch.no_grad():
-                clean_probs = model(clean.cuda()).softmax(-1).cpu()
-                adv_probs   = model(adv.cuda()  ).softmax(-1).cpu()
-
-            logger.add(
-                clean_audio=clean, adv_audio=adv,
-                clean_probs=clean_probs, adv_probs=adv_probs,
-                labels=label,
-            )
-
-        logger.save(f"outputs/results/pgd_samples_eps{eps}.npz")
-    """
+    """Collect per-sample confidences during PGD eval, dump one .npz at the end."""
     def __init__(self, epsilon, keep_one_example=True):
         self.epsilon = epsilon
         self.keep_one_example = keep_one_example
-        self.clean_conf_correct = []   # P(correct class) before attack
-        self.adv_conf_correct   = []   # P(correct class) after attack
+        self.clean_conf_correct = []
+        self.adv_conf_correct   = []
         self.predicted_before   = []
         self.predicted_after    = []
         self.labels             = []
@@ -65,12 +33,12 @@ class PGDSampleLogger:
             self.predicted_after .append(int(adv_probs  [i].argmax()))
             self.labels          .append(int(y))
 
-        # Save the first drone-class sample that was successfully flipped
+        # Hang on to the first drone clip the attack successfully flipped — fig 6 plots it.
         if self.keep_one_example and self.example_clean is None:
             for i, y in enumerate(labels):
                 was_correct = clean_probs[i].argmax() == y
                 now_wrong   = adv_probs  [i].argmax() != y
-                if was_correct and now_wrong and y == 1:  # drone -> no_drone
+                if was_correct and now_wrong and y == 1:
                     self.example_clean = clean_audio[i].detach().cpu().numpy()
                     self.example_adv   = adv_audio  [i].detach().cpu().numpy()
                     self.example_label = int(y)

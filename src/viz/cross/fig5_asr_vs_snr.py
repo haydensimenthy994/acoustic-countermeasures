@@ -1,12 +1,4 @@
-"""
-Cross-dataset Figure 5: jamming + spoofing ASR vs SNR on SWARM, PGD reference point.
-
-INPUT:
-    outputs/results/cross_dataset_jamming.csv
-    outputs/results/cross_dataset_spoofing.csv
-    outputs/results/cross_dataset_attacks.csv
-    outputs/results/cross_dataset_attacks_per_sample.csv  (PGD SNR)
-"""
+"""Cross-dataset Figure 5 — jamming and spoofing vs SNR on SWARM, PGD overlaid."""
 from __future__ import annotations
 
 import pandas as pd

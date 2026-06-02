@@ -26,7 +26,6 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load CNN14 model
     model = CNN14ProxyClassifier(
         num_classes=2,
         pretrained_path="outputs/checkpoints/Cnn14_16k_mAP=0.438.pth",
@@ -39,7 +38,6 @@ def main():
     model.eval()
     print("Loaded CNN14 model")
 
-    # Test dataset — raw waveform for CNN14
     split_csv = "data/metadata/split_metadata.csv"
     test_dataset = DroneAudioDataset(
         metadata_csv=split_csv,
@@ -72,7 +70,6 @@ def main():
             f"{results['avg_snr_db']:<10.2f}"
         )
 
-    # Save results
     output_dir = Path("outputs/results")
     output_dir.mkdir(parents=True, exist_ok=True)
 

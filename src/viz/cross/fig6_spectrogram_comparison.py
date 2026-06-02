@@ -1,9 +1,4 @@
-"""
-Cross-dataset Figure 6: mel-spectrogram comparison on one SWARM clip.
-
-INPUT:
-    outputs/results/cross_pgd_samples_eps0.001.npz
-"""
+"""Cross-dataset Figure 6 — mel-spectrogram comparison on one SWARM clip."""
 from __future__ import annotations
 
 import numpy as np

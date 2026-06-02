@@ -50,12 +50,7 @@ def main():
     output_dir = Path("outputs/results")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---- Jamming -------------------------------------------------------
-    # SNR range: high SNR = weak jamming, low SNR = strong jamming.
-    # `evaluate_jamming` now reports BOTH:
-    #   - `asr` (population, 1 - accuracy)               — legacy
-    #   - `conditional_asr` (clean-correct denominator)  — comparable with
-    #     FGSM/PGD/EOT-PGD ASR on Figure 5.
+    # High SNR = weak jamming, low SNR = strong jamming.
     snr_levels = [40, 35, 30, 25, 20, 15, 10, 5, 0, -5]
 
     print("=" * 50)
@@ -72,10 +67,8 @@ def main():
     with open(output_dir / "jamming_results.json", "w") as f:
         json.dump(jamming_results, f, indent=2)
 
-    # ---- Drone-recall sanity check ------------------------------------
-    # This is what the previous `spoofing_results.json` actually contained
-    # (drone-class recall, mis-named as a spoofing ASR). Kept here under
-    # the correct name so the historical number is still reproducible.
+    # The old `spoofing_results.json` was actually just drone-class recall
+    # (mis-named). Reproduced here under the right name.
     print("\n" + "=" * 50)
     print("DRONE-RECALL SANITY CHECK  (legacy spoofing_results.json)")
     print("=" * 50)
@@ -83,10 +76,6 @@ def main():
     with open(output_dir / "drone_recall.json", "w") as f:
         json.dump(drone_recall, f, indent=2)
 
-    # ---- Real acoustic spoofing baseline ------------------------------
-    # Mix a drone clip into each clean-correct no_drone clip at a range
-    # of no_drone:drone SNRs and measure how often the detector flips to
-    # `drone`. High SNR = quiet (distant) drone; low SNR = loud drone.
     print("\n" + "=" * 50)
     print("ACOUSTIC SPOOFING BASELINE")
     print("=" * 50)
@@ -106,7 +95,6 @@ def main():
     print(f"Saved drone recall  to   {output_dir / 'drone_recall.json'}")
     print(f"Saved spoofing      to   {output_dir / 'spoofing_results.csv'}")
 
-    # ---- Headline comparison table ------------------------------------
     print("\n" + "=" * 50)
     print("SUMMARY: Adversarial ASR vs Jamming (conditional) ASR")
     print("=" * 50)

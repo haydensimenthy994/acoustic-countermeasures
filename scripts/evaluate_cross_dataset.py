@@ -1,22 +1,8 @@
-"""
-Cross-dataset clean-accuracy evaluation on SWARM-AUDIO-DATASET.
+"""Clean-accuracy evaluation of the existing checkpoints on SWARM (no retraining).
 
-Loads the existing checkpoints (no re-training) and reports how well
-they generalise to a held-out corpus they have never seen during
-training. Addresses the source-level data leakage and limited drone
-diversity flagged in the project audit.
-
-Reads:
-  outputs/checkpoints/best_model_cnn14.pt        — CNN14ProxyClassifier
-  outputs/checkpoints/best_model.pt              — ProxyAudioCNN
-  data/metadata/swarm_test_manifest.csv          — built by build_swarm_manifest.py
-
-Writes:
-  outputs/results/cross_dataset_swarm.json       — full numeric report
-  outputs/results/cross_dataset_swarm.csv        — per-(model,source) summary
-
-Usage:
-  python scripts/evaluate_cross_dataset.py
+The point is to see how well the trained models generalise to a corpus they
+have never seen, since the audit flagged source-level leakage in the original
+train/val/test split.
 """
 from __future__ import annotations
 
@@ -46,10 +32,6 @@ from src.models.pann_proxy import ProxyAudioCNN
 from src.utils.seed import set_seed
 
 
-# ---------------------------------------------------------------------------
-# Inference helpers
-# ---------------------------------------------------------------------------
-
 def _run_cnn14(
     model: torch.nn.Module,
     loader: DataLoader,
@@ -58,7 +40,7 @@ def _run_cnn14(
     preds, labels, probs = [], [], []
     with torch.no_grad():
         for batch in loader:
-            x  = batch["features"].to(device)   # [B, samples] raw waveform
+            x  = batch["features"].to(device)  # raw waveform
             y  = batch["label"].to(device)
             logits = model(x)
             p = torch.softmax(logits, dim=1)
@@ -77,9 +59,9 @@ def _run_proxycnn(
     preds, labels, probs = [], [], []
     with torch.no_grad():
         for batch in loader:
-            wav = batch["features"].to(device)   # [B, samples]
+            wav = batch["features"].to(device)
             y   = batch["label"].to(device)
-            mel_spec = mel(wav)                  # [B, n_mels, time]
+            mel_spec = mel(wav)
             logits = model(mel_spec)
             p = torch.softmax(logits, dim=1)
             preds.extend(logits.argmax(dim=1).cpu().numpy())
@@ -88,12 +70,8 @@ def _run_proxycnn(
     return np.array(preds), np.array(labels), np.array(probs)
 
 
-# ---------------------------------------------------------------------------
-# Metric helpers
-# ---------------------------------------------------------------------------
-
 def _binom_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
-    """Wilson score 95 % CI for proportion k/n."""
+    """Wilson score 95% CI for the proportion k/n."""
     if n == 0:
         return (0.0, 0.0)
     p = k / n
@@ -132,7 +110,7 @@ def _summarise(
             out["auc_roc"] = float("nan")
         out["confusion_matrix"] = confusion_matrix(labels, preds).tolist()
     else:
-        # single-class slice (e.g. trident-only is all drone)
+        # Single-class slice (e.g. trident-only is all drone) — F1/AUC undefined.
         out["recall_drone"] = float(((preds == 1) & (labels == 1)).sum() /
                                     max((labels == 1).sum(), 1))
         out["recall_no_drone"] = float(((preds == 0) & (labels == 0)).sum() /
@@ -149,10 +127,6 @@ def _balanced_accuracy(preds: np.ndarray, labels: np.ndarray) -> float:
     tnr = (preds[neg] == 0).mean()
     return float(0.5 * (tpr + tnr))
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     set_seed(42)
@@ -175,7 +149,6 @@ def main() -> None:
     loader = DataLoader(test_dataset, batch_size=16, shuffle=False, num_workers=0)
     print(f"SWARM test samples: {len(test_dataset)}\n")
 
-    # Models -----------------------------------------------------------------
     print("Loading CNN14...")
     cnn14 = CNN14ProxyClassifier(
         num_classes=2,
@@ -197,14 +170,12 @@ def main() -> None:
 
     mel = LogMelSpectrogram().to(device)
 
-    # Inference --------------------------------------------------------------
     print("\nRunning CNN14 inference...")
     cnn14_preds, labels, cnn14_probs = _run_cnn14(cnn14, loader, device)
 
     print("Running ProxyAudioCNN inference...")
     proxy_preds, _, proxy_probs = _run_proxycnn(proxy, loader, mel, device)
 
-    # Per-row metadata for slicing
     meta = test_dataset.df.reset_index(drop=True)
     meta["label_int"]  = labels
     meta["cnn14_pred"] = cnn14_preds
@@ -212,7 +183,6 @@ def main() -> None:
     meta["cnn14_correct"] = (cnn14_preds == labels).astype(int)
     meta["proxy_correct"] = (proxy_preds == labels).astype(int)
 
-    # Aggregate reports ------------------------------------------------------
     report: dict = {
         "manifest":     manifest_csv,
         "n_total":      int(len(labels)),
@@ -236,7 +206,6 @@ def main() -> None:
         },
     }
 
-    # Per-source slices
     for src, sub in meta.groupby("source_dataset"):
         idx = sub.index.values
         report["models"]["CNN14"]["by_source"][src] = _summarise(
@@ -246,7 +215,6 @@ def main() -> None:
             proxy_preds[idx], labels[idx], proxy_probs[idx]
         )
 
-    # Per-drone-type slices (drones-only)
     drone_meta = meta[meta["label"] == "drone"]
     for dt, sub in drone_meta.groupby("drone_type"):
         idx = sub.index.values
@@ -257,7 +225,6 @@ def main() -> None:
             proxy_preds[idx], labels[idx], proxy_probs[idx]
         )
 
-    # Save -------------------------------------------------------------------
     out_dir = Path("outputs/results")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -299,7 +266,6 @@ def main() -> None:
         out_dir / "cross_dataset_swarm.csv", index=False
     )
 
-    # Console report ---------------------------------------------------------
     def _hdr(s: str) -> None:
         print("\n" + "=" * 72)
         print(s)

@@ -1,15 +1,10 @@
-"""
-Parse outputs/logs/train_*.log into training_metrics_*.json for fig 1.
-
-Run once per model you trained:
-    python scripts/parse_train_log.py --log outputs/logs/train_cnn14_20260326_030959.log --out outputs/logs/training_metrics_cnn14.json --name cnn14
-    python scripts/parse_train_log.py --log outputs/logs/train_20260325_125512.log --out outputs/logs/training_metrics_scratch.json --name scratch
-"""
+"""Scrape per-epoch metrics out of a train_*.log into JSON for fig 1."""
 import argparse, json, re
 from pathlib import Path
 
 
-# Matches: Epoch 1/10 | Train Loss: 0.5867 | Train Acc: 0.6658 | Val Loss: 0.5329 | Val Acc: 0.7751 | Time: 128.8s
+# Format example:
+#   Epoch 1/10 | Train Loss: 0.5867 | Train Acc: 0.6658 | Val Loss: 0.5329 | Val Acc: 0.7751 | Time: 128.8s
 PATTERN_EPOCH = re.compile(
     r"Epoch\s+(\d+)\s*/\s*\d+\s*\|\s*"
     r"Train\s+Loss:\s*([0-9.]+)\s*\|\s*"

@@ -1,12 +1,5 @@
-"""
-Standalone PGD run at a single epsilon that saves:
-  - per-sample clean + adversarial confidences  (for fig 4)
-  - one clean + adversarial waveform pair       (for fig 6)
-
-Writes a single .npz to outputs/results/pgd_samples_eps{epsilon}.npz.
-
-Run:
-    python scripts/run_pgd_with_samples.py
+"""PGD at a single epsilon that also dumps per-sample confidences (fig 4)
+and one clean/adv waveform pair (fig 6) to a single .npz.
 """
 from __future__ import annotations
 
@@ -24,8 +17,6 @@ from src.models.cnn14_proxy import CNN14ProxyClassifier
 from src.attacks.pgd import pgd_attack
 
 
-# ----- configuration ------------------------------------------------------
-
 EPSILON   = 0.001
 ALPHA     = EPSILON / 10
 NUM_STEPS = 40
@@ -38,13 +29,10 @@ SPLIT_CSV = "data/metadata/split_metadata.csv"
 OUT_PATH  = f"outputs/results/pgd_samples_eps{EPSILON}.npz"
 
 
-# ----- main ---------------------------------------------------------------
-
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load model — same pattern as run_pgd.py
     model = CNN14ProxyClassifier(
         num_classes=2,
         pretrained_path=PANN_PATH,
@@ -57,7 +45,6 @@ def main():
     model.eval()
     print("Loaded CNN14 model")
 
-    # Load test set
     test_dataset = DroneAudioDataset(
         metadata_csv=SPLIT_CSV,
         config_path="configs/data.yaml",
@@ -69,7 +56,6 @@ def main():
                              shuffle=False, num_workers=0)
     print(f"Test samples: {len(test_dataset)}")
 
-    # --- accumulators ---
     clean_conf_correct = []
     adv_conf_correct   = []
     predicted_before   = []
@@ -80,7 +66,6 @@ def main():
     example_adv   = None
     example_label = -1
 
-    # --- run PGD on every batch ---
     print(f"\nRunning PGD at ε={EPSILON}, α={ALPHA}, {NUM_STEPS} steps...")
     for batch_idx, batch in enumerate(test_loader):
         features = batch["features"].to(device)
@@ -91,7 +76,7 @@ def main():
             clean_probs  = torch.softmax(clean_logits, dim=1)
             clean_preds  = clean_logits.argmax(dim=1)
 
-        # Only attack correctly classified samples (mirrors evaluate_pgd)
+        # Only attack samples the model gets right when clean (same as evaluate_pgd).
         correct_mask = clean_preds == labels
         if correct_mask.sum() == 0:
             continue
@@ -110,7 +95,6 @@ def main():
             adv_probs  = torch.softmax(adv_logits, dim=1)
             adv_preds  = adv_logits.argmax(dim=1)
 
-        # Store per-sample data
         labels_cpu = labels_correct.cpu().numpy()
         clean_probs_cpu = clean_probs_corr.cpu().numpy()
         adv_probs_cpu   = adv_probs.cpu().numpy()
@@ -124,10 +108,10 @@ def main():
             predicted_after .append(int(adv_preds_cpu  [i]))
             labels_all.append(int(y))
 
-        # Capture one example — first drone sample that flipped to no_drone
+        # Grab the first drone clip the attack manages to flip — fig 6 needs it.
         if example_clean is None:
             for i, y in enumerate(labels_cpu):
-                if y == 1 and adv_preds_cpu[i] != y:   # drone -> no_drone
+                if y == 1 and adv_preds_cpu[i] != y:
                     example_clean = features_correct[i].detach().cpu().numpy()
                     example_adv   = adv_features    [i].detach().cpu().numpy()
                     example_label = int(y)
@@ -136,7 +120,6 @@ def main():
                           f"adv_conf={adv_probs_cpu[i, y]:.3f})")
                     break
 
-    # --- summary ---
     n = len(labels_all)
     n_flipped = sum(1 for b, a in zip(predicted_before, predicted_after) if b != a)
     print(f"\nProcessed {n} correctly-classified test samples")
@@ -149,7 +132,6 @@ def main():
         example_clean = np.array([])
         example_adv   = np.array([])
 
-    # --- save ---
     Path(OUT_PATH).parent.mkdir(parents=True, exist_ok=True)
     np.savez(
         OUT_PATH,

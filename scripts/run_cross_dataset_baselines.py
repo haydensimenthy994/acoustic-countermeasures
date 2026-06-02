@@ -1,24 +1,7 @@
-"""
-Cross-dataset acoustic baselines (jamming + spoofing) on SWARM.
+"""run_baselines.py, but on the SWARM cross-dataset manifest.
 
-Mirrors scripts/run_baselines.py but evaluates on the held-out
-SWARM-AUDIO-DATASET corpus instead of the in-distribution split.
-Produces directly comparable conditional-ASR numbers so the
-in-distribution vs cross-dataset gap can be quantified for jamming
-and spoofing alongside the gradient-attack results.
-
-Inputs:
-  data/metadata/swarm_test_manifest.csv  (built by build_swarm_manifest.py)
-  outputs/checkpoints/best_model_cnn14.pt
-
-Outputs:
-  outputs/results/cross_dataset_jamming.csv
-  outputs/results/cross_dataset_jamming.json
-  outputs/results/cross_dataset_spoofing.csv
-  outputs/results/cross_dataset_spoofing.json
-
-Usage:
-  python scripts/run_cross_dataset_baselines.py
+Outputs the same conditional-ASR numbers so the in-distribution vs cross-
+dataset gap is directly comparable for jamming and spoofing.
 """
 from __future__ import annotations
 
@@ -77,8 +60,7 @@ def main() -> None:
     out_dir = Path("outputs/results")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---- Jamming -----------------------------------------------------------
-    # Same SNR sweep as the in-distribution run for direct comparison.
+    # Same SNR sweep as the in-distribution run so the numbers line up.
     snr_jam = [40, 35, 30, 25, 20, 15, 10, 5, 0, -5]
 
     print("=" * 50)
@@ -89,7 +71,6 @@ def main() -> None:
     with open(out_dir / "cross_dataset_jamming.json", "w") as f:
         json.dump(jam, f, indent=2)
 
-    # ---- Spoofing ----------------------------------------------------------
     snr_spf = [20, 15, 10, 5, 0, -5, -10, -15, -20]
 
     print("\n" + "=" * 50)
@@ -102,7 +83,6 @@ def main() -> None:
     with open(out_dir / "cross_dataset_spoofing.json", "w") as f:
         json.dump(spf, f, indent=2)
 
-    # ---- Summary -----------------------------------------------------------
     print("\n" + "=" * 60)
     print("SUMMARY  in-distribution  vs  SWARM cross-dataset")
     print("=" * 60)

@@ -12,11 +12,10 @@ def simulate_rir(
     sample_rate: int = 16000,
     rng: np.random.Generator | None = None,
 ) -> np.ndarray:
-    """Simulate a random Room Impulse Response using pyroomacoustics.
+    """Random shoebox-room RIR via pyroomacoustics.
 
-    If `rng` is provided, all randomness comes from it and the bank
-    is bit-reproducible. If None, falls back to global numpy state
-    (legacy behaviour for back-compat).
+    Pass an `rng` for reproducible banks; otherwise we fall back to numpy's
+    global state (kept for back-compat with older runs).
     """
     r = rng if rng is not None else np.random
     length = r.uniform(3.0, 10.0)
@@ -51,7 +50,7 @@ def build_rir_bank(
     sample_rate: int = 16000,
     seed: int | None = 42,
 ) -> list[np.ndarray]:
-    """Convenience helper — seeded RIR bank for reproducible runs."""
+    """Seeded RIR bank for reproducible runs."""
     rng = np.random.default_rng(seed) if seed is not None else None
     return [simulate_rir(sample_rate=sample_rate, rng=rng) for _ in range(n)]
 
@@ -61,10 +60,7 @@ def build_rir_bank_tensors(
     max_len: int = 512,
     device: torch.device = torch.device("cpu"),
 ) -> torch.Tensor:
-    """
-    Convert list of RIR numpy arrays into a batched GPU tensor for fast convolution.
-    Returns: [num_rirs, 1, max_len]
-    """
+    """Stack RIRs into a [N, 1, max_len] tensor, pre-flipped for conv1d."""
     tensors = []
     for rir in rir_bank:
         r = rir[:max_len]
@@ -72,36 +68,30 @@ def build_rir_bank_tensors(
             r = np.pad(r, (0, max_len - len(r)))
         t = torch.tensor(r, dtype=torch.float32, device=device).flip(0)
         tensors.append(t)
-    return torch.stack(tensors).unsqueeze(1)  # [N, 1, max_len]
+    return torch.stack(tensors).unsqueeze(1)
 
 
 def _apply_rir_differentiable(
     waveform: torch.Tensor,
     rir_kernel: torch.Tensor,
 ) -> torch.Tensor:
-    """
-    Differentiable RIR convolution that keeps the computation graph alive.
-    waveform:   [samples] — must have requires_grad lineage
-    rir_kernel: [1, 1, kernel_len] — pre-flipped, treated as a fixed filter
-    Returns:    [samples] with grad flowing back to waveform
-    """
-    wav = waveform.unsqueeze(0).unsqueeze(0)  # [1, 1, samples]
+    """Single-sample RIR conv that keeps the autograd graph intact."""
+    wav = waveform.unsqueeze(0).unsqueeze(0)
     pad = rir_kernel.shape[-1] - 1
     convolved = torch.nn.functional.conv1d(wav, rir_kernel, padding=pad)
     convolved = convolved[0, 0, : waveform.shape[-1]]
 
-    # Normalise energy to match the input.  .clamp keeps grads finite.
+    # Match the input's peak amplitude. clamp keeps grads finite.
     peak = convolved.abs().max().clamp(min=1e-8)
     ref = waveform.abs().max().clamp(min=1e-8)
-    convolved = convolved / peak * ref
-    return convolved
+    return convolved / peak * ref
 
 
 def _apply_rir_no_grad(
     waveform: torch.Tensor,
     rir_kernel: torch.Tensor,
 ) -> torch.Tensor:
-    """Non-differentiable RIR convolution for OTA evaluation."""
+    """Same as _apply_rir_differentiable, but for eval (no graph)."""
     wav = waveform.unsqueeze(0).unsqueeze(0)
     pad = rir_kernel.shape[-1] - 1
     convolved = torch.nn.functional.conv1d(wav, rir_kernel, padding=pad)
@@ -112,10 +102,6 @@ def _apply_rir_no_grad(
     return convolved
 
 
-# ---------------------------------------------------------------------------
-# Batched (vectorised) EOT transform stack
-# ---------------------------------------------------------------------------
-
 def apply_eot_transforms_batched(
     waveforms: torch.Tensor,
     rir_kernels: torch.Tensor | None,
@@ -123,66 +109,45 @@ def apply_eot_transforms_batched(
     gain_range: tuple[float, float] = (0.7, 1.3),
     snr_range_db: tuple[float, float] = (20.0, 40.0),
 ) -> torch.Tensor:
-    """
-    Apply the EOT transform stack (random RIR + gain + optional Gaussian
-    noise) to a whole batch of waveforms in one shot.
+    """Apply RIR + gain + (optional) Gaussian noise to a whole batch in one shot.
 
-    This replaces the previous per-sample Python loop, which serialised
-    400 single-element conv1d + GPU sync calls per batch and made
-    EOT-PGD ~20x slower than necessary.
-
-    Args:
-        waveforms:    [B, samples] — may carry grad lineage from delta.
-        rir_kernels:  [N, 1, K] pre-flipped RIRs on the same device, or None.
-        with_noise:   if True, add Gaussian noise at SNR uniformly sampled
-                      from `snr_range_db` per batch element.
-        gain_range:   uniform sample range for the per-sample gain.
-        snr_range_db: uniform sample range for the per-sample SNR (dB).
-
-    Returns:
-        [B, samples] transformed waveforms; gradient flows back through
-        `waveforms` if it had requires_grad set.
-
-    Random parameters (which RIR, gain, SNR) are drawn from torch's
-    global RNG (which `src.utils.seed.set_seed(42)` seeds at startup),
-    so calls are bit-reproducible across runs with the same seed.
+    This used to be a per-sample Python loop that fired ~400 single-element
+    conv1ds and made EOT-PGD ~20x slower than it needed to be. Grad still
+    flows back through `waveforms`. RNG comes from torch's global state, so
+    `set_seed(42)` at startup is enough for reproducibility.
     """
     B, T = waveforms.shape
     device = waveforms.device
 
-    # 1) RIR convolution — pick one RIR per batch element, apply via
-    #    grouped conv1d so the whole batch is convolved in a single call.
+    # Pick one RIR per batch element and run them all as a single grouped conv.
     if rir_kernels is not None and rir_kernels.shape[0] > 0:
         N = rir_kernels.shape[0]
         K = rir_kernels.shape[-1]
         idx = torch.randint(0, N, (B,), device=device)
-        selected = rir_kernels[idx]                       # [B, 1, K]
-        x = waveforms.unsqueeze(0)                        # [1, B, T]
+        selected = rir_kernels[idx]
+        x = waveforms.unsqueeze(0)
         pad = K - 1
         convolved = torch.nn.functional.conv1d(
             x, selected, padding=pad, groups=B,
-        )                                                 # [1, B, T+K-1]
-        convolved = convolved[:, :, :T].squeeze(0)        # [B, T]
+        )
+        convolved = convolved[:, :, :T].squeeze(0)
 
-        # Peak-normalise per sample to match the input's amplitude.
         peak = convolved.abs().amax(dim=-1, keepdim=True).clamp(min=1e-8)
         ref = waveforms.abs().amax(dim=-1, keepdim=True).clamp(min=1e-8)
         x = convolved / peak * ref
     else:
         x = waveforms
 
-    # 2) Random per-sample gain (broadcast multiply).
     scales = torch.empty(B, 1, device=device).uniform_(
         gain_range[0], gain_range[1],
     )
     x = x * scales
 
-    # 3) Additive Gaussian noise at random per-sample SNR.
     if with_noise:
         snr_db = torch.empty(B, 1, device=device).uniform_(
             snr_range_db[0], snr_range_db[1],
         )
-        sig_pow = x.detach().pow(2).mean(dim=-1, keepdim=True)          # [B, 1]
+        sig_pow = x.detach().pow(2).mean(dim=-1, keepdim=True)
         noise_pow = torch.where(
             sig_pow > 1e-8,
             sig_pow / (10 ** (snr_db / 10)),
@@ -192,10 +157,6 @@ def apply_eot_transforms_batched(
 
     return x
 
-
-# ---------------------------------------------------------------------------
-# EOT-PGD attack
-# ---------------------------------------------------------------------------
 
 def eot_pgd_attack(
     model: nn.Module,
@@ -211,18 +172,11 @@ def eot_pgd_attack(
     verbose: bool = False,
     random_start: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """
-    PGD with Expectation-over-Transformation (EOT).
+    """PGD with Expectation-over-Transformation.
 
-    All acoustic transformations (RIR convolution, volume scaling, additive
-    noise) are applied **inside** the computation graph so that gradients
-    propagate back through delta.  Random *parameters* (which RIR, scale
-    factor, SNR) are sampled without grad — the transforms themselves are
-    differentiable.
-
-    Args:
-        rir_kernels: [N, 1, kernel_len] pre-flipped RIR tensor on *device*.
-        random_start: see pgd_attack.random_start.
+    The acoustic transforms (RIR, gain, noise) live inside the autograd
+    graph; only the *choice* of RIR/gain/SNR is sampled without grad.
+    See `pgd_attack` for `random_start` semantics.
     """
     model.eval()
     features = features.detach().to(device)
@@ -242,10 +196,6 @@ def eot_pgd_attack(
 
         for _ in range(num_eot_samples):
             adv_input = features + delta
-
-            # Batched RIR + gain + noise — see apply_eot_transforms_batched.
-            # Replaces a per-sample Python loop; grad still flows from
-            # `transformed` back through `adv_input` (= features + delta).
             transformed = apply_eot_transforms_batched(
                 adv_input,
                 rir_kernels=rir_kernels,
@@ -262,16 +212,11 @@ def eot_pgd_attack(
         if verbose and step == 0:
             print(f"    [step 0] grad norm = {avg_grad.norm().item():.6f}")
 
-        # PGD update
         delta = delta + alpha * avg_grad.sign()
         delta = torch.clamp(delta, -epsilon, epsilon).detach()
 
     return (features + delta).detach(), delta.detach()
 
-
-# ---------------------------------------------------------------------------
-# Evaluation
-# ---------------------------------------------------------------------------
 
 def evaluate_eot_pgd(
     model: nn.Module,
@@ -284,7 +229,7 @@ def evaluate_eot_pgd(
     device: torch.device = torch.device("cpu"),
     rir_kernels: torch.Tensor = None,
 ) -> dict:
-    """Evaluate EOT-PGD — reports digital ASR and OTA ASR."""
+    """Run EOT-PGD over a loader, reporting digital and OTA ASR."""
     if alpha is None:
         alpha = epsilon / 10
 
@@ -331,7 +276,7 @@ def evaluate_eot_pgd(
             sample_rate=sample_rate,
             device=device,
             rir_kernels=rir_kernels,
-            verbose=(batch_idx == 0),  # print grad norm for first batch
+            verbose=(batch_idx == 0),
         )
 
         metrics = compute_perturbation_metrics(features_correct, adv_features)
@@ -339,7 +284,7 @@ def evaluate_eot_pgd(
         linf_norms.append(metrics["linf_norm"])
         snr_values.append(metrics["snr_db"])
 
-        # ----- Digital evaluation -----
+        # Digital
         with torch.no_grad():
             adv_logits = model(adv_features)
             adv_probs = torch.softmax(adv_logits, dim=1)
@@ -347,11 +292,9 @@ def evaluate_eot_pgd(
 
         correct_adv_digital += (adv_preds == labels_correct).sum().item()
 
-        # ----- OTA evaluation — majority vote over 5 transforms -----
-        # Same batched transform stack the attack saw: RIR + gain +
-        # Gaussian noise at SNR 20-40 dB. Previously this block omitted
-        # the noise (made OTA ASR optimistic) and ran a per-sample loop
-        # (made it slow); both fixes go through apply_eot_transforms_batched.
+        # OTA: 5-vote majority across the same transform stack the attack
+        # saw. Earlier versions skipped the noise here (optimistic OTA ASR)
+        # and looped per-sample (slow); both go through the batched helper.
         ota_misclassified_votes = torch.zeros(
             len(labels_correct), dtype=torch.long, device=device,
         )

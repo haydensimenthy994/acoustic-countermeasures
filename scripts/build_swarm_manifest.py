@@ -1,35 +1,9 @@
-"""
-Build a cross-dataset test manifest from SWARM-AUDIO-DATASET.
+"""Build the cross-dataset test manifest from SWARM-AUDIO-DATASET.
 
-Why a separate manifest:
-  Our existing models were trained on the legacy dataset whose
-  random file-level split is suspected of leaking source recordings
-  across train/val/test (see scripts/check_duration_leakage.py and
-  the project README). Evaluating those trained models on
-  SWARM-AUDIO-DATASET — a corpus they have never seen — gives an
-  honest cross-dataset generalisation estimate without re-training.
-
-Output schema:
-  filepath        absolute path to a 4 s WAV (auto-resampled at load)
-  filename        leaf file name (for traceability)
-  label           "drone" | "no_drone"
-  source_dataset  "alemadi" | "trident" | "wildlife_xenocanto"
-                  | "wildlife_other" | "alemadi_background"
-  drone_type      "bebop" | "membo" | "drone_alemadi" | "trident"
-                  | NaN (for backgrounds)
-  group_id        identifier of the parent recording — for any future
-                  GroupShuffleSplit retraining. Multiple chunks
-                  cut from the same parent recording share group_id.
-  split           always "test" — this manifest is held out by design.
-
-Usage:
-  python scripts/build_swarm_manifest.py \\
-      --root  C:/Users/hayde/Downloads/SWARM-AUDIO-DATASET/SWARM-AUDIO-DATASET \\
-      --out   data/metadata/swarm_test_manifest.csv
-
-The script only walks `2_segments_4s/` because those are uniform 4 s
-clips that drop straight into the existing DroneAudioDataset (5 s
-target → padded by 1 s of zeros, no truncation).
+The trained models have never seen any of these clips, so this gives an
+honest generalisation read without retraining. Walks only `2_segments_4s/`
+since those drop straight into DroneAudioDataset (5 s target = 1 s of pad,
+no truncation). `group_id` is preserved for any future GroupShuffleSplit.
 """
 from __future__ import annotations
 
@@ -40,24 +14,13 @@ from pathlib import Path
 
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# Source-group extraction
-# ---------------------------------------------------------------------------
-# Different sub-corpora use different filename conventions. Examples:
-#
-#   Alemadi drone segments    : B_S2_D1_067-bebop_000__0.wav
-#                               → parent rec = "B_S2_D1_067"
-#   Trident drone segments    : trident_d1_0_seg1.wav
-#                               → parent rec = "trident_d1_0"
-#   Alemadi background (ESC50): 1-100032-A-00.wav
-#                               → parent rec = "100032"
-#   Wildlife (Xeno-Canto)     : XC1015738 - House Sparrow - X_0.wav
-#                               → parent rec = "XC1015738"
-#   Wildlife (other)          : doing_the_dishes000_0.wav
-#                               → parent rec = "doing_the_dishes000"
-#
-# The regex patterns below extract the parent-recording identifier so
-# every chunk derived from the same source ends up in the same group.
+# Each sub-corpus has its own filename convention; pull the parent-recording
+# id out so chunks of the same source share a group_id. Examples:
+#   Alemadi drone:       B_S2_D1_067-bebop_000__0.wav     -> B_S2_D1_067
+#   Trident drone:       trident_d1_0_seg1.wav            -> trident_d1_0
+#   ESC-50 background:   1-100032-A-00.wav                -> 100032
+#   Xeno-Canto:          XC1015738 - House Sparrow_0.wav  -> XC1015738
+#   Other wildlife:      doing_the_dishes000_0.wav        -> doing_the_dishes000
 
 ALEMADI_DRONE_RE  = re.compile(r"^(B_S\d+_D\d+_\d+)-")
 TRIDENT_DRONE_RE  = re.compile(r"^(trident_d\d+_\d+)_")
@@ -66,40 +29,33 @@ XENO_CANTO_RE     = re.compile(r"^(XC\d+)")
 
 
 def _extract_group_id(filename: str, fallback: str) -> str:
-    """Best-effort parent-recording id from filename. Falls back to
-    `fallback` (typically the filename minus a trailing _<digit>)."""
+    """Best-effort parent-recording id from a filename."""
     for pattern in (ALEMADI_DRONE_RE, TRIDENT_DRONE_RE, XENO_CANTO_RE):
         m = pattern.match(filename)
         if m:
             return m.group(1)
 
-    # ESC-50 style "<fold>-<clip>-<take>-<class>"
+    # ESC-50 layout: <fold>-<clip>-<take>-<class>
     m = ESC50_BG_RE.match(filename)
     if m:
         return m.group(1)
 
-    # Generic: drop a trailing "_<digit>+\.wav" so chunks of the same
-    # parent recording share an id.
+    # Generic: strip a trailing _<digit>.
     stem = Path(filename).stem
     return re.sub(r"_\d+$", "", stem)
 
 
-# ---------------------------------------------------------------------------
-# Path → (label, source_dataset, drone_type)
-# ---------------------------------------------------------------------------
-
 def _classify(rel_parts: tuple[str, ...]) -> tuple[str, str, str | None] | None:
-    """Map the relative path parts under `2_segments_4s/` to
-    (label, source_dataset, drone_type). Returns None to skip."""
+    """Path parts → (label, source_dataset, drone_type), or None to skip."""
     if len(rel_parts) < 2:
         return None
 
-    top = rel_parts[0]   # "drones" or "background"
+    top = rel_parts[0]
     second = rel_parts[1]
 
     if top == "drones":
         if second == "alemadi" and len(rel_parts) >= 3:
-            sub = rel_parts[2]                  # bebop / membo / drone
+            sub = rel_parts[2]
             if sub in {"bebop", "membo"}:
                 return "drone", "alemadi", sub
             if sub == "drone":
@@ -121,10 +77,6 @@ def _classify(rel_parts: tuple[str, ...]) -> tuple[str, str, str | None] | None:
 
     return None
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -177,7 +129,6 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_path, index=False)
 
-    # Summary -----------------------------------------------------------------
     print(f"Wrote {len(df)} rows to {out_path}")
     print()
     print("Per source / per label:")
@@ -189,8 +140,7 @@ def main() -> None:
     print("Per drone type:")
     print(df.loc[df["label"] == "drone", "drone_type"].value_counts())
     print()
-    print(f"Distinct group_id values: {df['group_id'].nunique()}  "
-          f"(used by future GroupShuffleSplit)")
+    print(f"Distinct group_id values: {df['group_id'].nunique()}")
 
 
 if __name__ == "__main__":

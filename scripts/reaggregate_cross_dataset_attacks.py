@@ -1,9 +1,7 @@
-"""Re-aggregate cross-dataset attacks from the per-sample CSV.
+"""Rebuild the aggregate CSV/JSON from the per-sample cross-dataset CSV.
 
-Rebuilds outputs/results/cross_dataset_attacks.csv and .json with the
-full per-(scope, slice) breakdown. Run after any cross-dataset attack
-run that produced a per-sample CSV but a stripped-down aggregate
-(e.g. if an older script version stored only the 'overall' rows).
+Use this when an old run only saved the 'overall' rows and you want the full
+per-(scope, slice) breakdown back without re-running the attacks.
 """
 from __future__ import annotations
 
@@ -44,7 +42,6 @@ def main() -> None:
     print(f"\nrebuilt {out_csv}  ({len(flat)} rows)")
     print(f"rebuilt {out_json}")
 
-    # Print a sanity sample
     print("\nsanity: PGD eps=0.001 per source")
     print(flat[(flat["attack"] == "PGD") & (flat["epsilon"] == 0.001) &
                (flat["scope"] == "source_dataset")]

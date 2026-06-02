@@ -49,7 +49,7 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False, num_workers=0)
     print(f"Test samples: {len(test_dataset)}")
 
-    # Same epsilons as FGSM for direct comparison
+    # Match the FGSM sweep so we get a direct apples-to-apples comparison.
     epsilons = [0.001, 0.005, 0.01, 0.02, 0.05]
     all_results = []
 

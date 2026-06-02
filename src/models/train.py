@@ -98,7 +98,6 @@ def main() -> None:
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
                             num_workers=num_workers, pin_memory=(device.type == "cuda"))
 
-    # Model selection
     if args.model_type == "cnn14":
         from src.models.cnn14_proxy import CNN14ProxyClassifier
         model = CNN14ProxyClassifier(
@@ -106,7 +105,7 @@ def main() -> None:
             pretrained_path="outputs/checkpoints/Cnn14_16k_mAP=0.438.pth",
             freeze_base=False,
         ).to(device)
-        lr = 1e-4  # Lower LR for fine-tuning
+        lr = 1e-4  # fine-tune, not from scratch — keep LR small.
         logger_info("Model: CNN14ProxyClassifier (PANNs fine-tune)")
     else:
         model = ProxyAudioCNN(
@@ -130,7 +129,7 @@ def main() -> None:
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     best_val_acc = 0.0
-    patience = 5  # Early stopping patience
+    patience = 5
     epochs_no_improve = 0
     ckpt_name = f"best_model_{args.model_type}.pt"
 

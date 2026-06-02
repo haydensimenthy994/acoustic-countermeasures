@@ -35,10 +35,5 @@ class LogMelSpectrogram(torch.nn.Module):
         self.eps = eps
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
-        """
-        waveform: [1, num_samples] or [batch, num_samples]
-        returns:  [n_mels, time] or [batch, n_mels, time]
-        """
         mel = self.mel(waveform)
-        log_mel = torch.log(mel + self.eps)
-        return log_mel
+        return torch.log(mel + self.eps)

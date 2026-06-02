@@ -1,9 +1,6 @@
-"""
-PGD black-box transfer only (CNN14 -> ProxyAudioCNN).
+"""Black-box PGD transfer from CNN14 (source) to ProxyAudioCNN (target).
 
-Usage:
-  python scripts/run_blackbox_pgd_transfer.py
-  python scripts/run_blackbox_pgd_transfer.py --epsilons 0.01,0.02,0.05 --resume
+Just the PGD slice; the EOT-PGD version lives in run_blackbox_eot_transfer.py.
 """
 from __future__ import annotations
 
@@ -126,7 +123,7 @@ def main() -> None:
             source, target, loader, mel,
             epsilon=eps, num_steps=args.num_steps, device=device,
         )
-        # Replace if re-running same epsilon without resume bookkeeping
+        # Replace any earlier row at this epsilon (e.g. re-run without --resume).
         results = [x for x in results if float(x["epsilon"]) != eps]
         results.append(r)
         results.sort(key=lambda x: float(x["epsilon"]))

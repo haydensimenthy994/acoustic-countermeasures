@@ -1,10 +1,6 @@
-"""
-Master runner — generates all six thesis figures from the saved results.
+"""Regenerate all six in-distribution figures from the saved result CSVs/JSONs.
 
-Usage (from repo root):
-    python scripts/generate_all_figures.py
-
-Output goes to outputs/figures/ in both PNG (300 dpi) and PDF format.
+Outputs land in outputs/figures/ as both PNG (300 dpi) and PDF.
 """
 import os
 import sys
@@ -23,7 +19,6 @@ def run_one(name, fn):
         return True
     except FileNotFoundError as e:
         print(f"  MISSING INPUT: {e}")
-        print(f"  See scripts/ README for which step to run first.")
         return False
     except Exception:
         print(f"  FAILED:")

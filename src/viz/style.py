@@ -1,16 +1,10 @@
-"""
-Shared matplotlib style for all thesis figures.
-
-Import this at the top of every figure script:
-    from src.viz.style import apply_style, COLORS, save_fig
-    apply_style()
-"""
+"""Shared matplotlib style for the thesis figures."""
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from pathlib import Path
 
 
-# Colour palette — colour-blind safe, print-friendly
+# Colour-blind safe, print-friendly palette.
 COLORS = {
     "cnn14":       "#1f77b4",   # blue
     "scratch":     "#ff7f0e",   # orange
@@ -30,7 +24,6 @@ COLORS = {
 
 
 def apply_style():
-    """Apply consistent thesis-quality styling to all plots."""
     mpl.rcParams.update({
         "figure.dpi": 100,
         "savefig.dpi": 300,
@@ -56,10 +49,7 @@ def apply_style():
 
 
 def save_fig(fig, name, outdir="outputs/figures", formats=("png", "pdf")):
-    """
-    Save a figure in multiple formats.
-    PNG for quick viewing, PDF for LaTeX/thesis inclusion.
-    """
+    """PNG for quick previews, PDF for the thesis."""
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     saved = []

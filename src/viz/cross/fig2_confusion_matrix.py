@@ -1,9 +1,4 @@
-"""
-Cross-dataset Figure 2: CNN14 vs ProxyAudioCNN confusion matrices on SWARM.
-
-INPUT:
-    outputs/results/cross_dataset_swarm.json
-"""
+"""Cross-dataset Figure 2 — CNN14 vs ProxyAudioCNN confusion matrices on SWARM."""
 from __future__ import annotations
 
 import json

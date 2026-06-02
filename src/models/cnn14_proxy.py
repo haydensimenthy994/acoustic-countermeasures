@@ -6,16 +6,16 @@ import importlib.util
 import torch
 import torch.nn as nn
 
-# PANNs repo path
 PANNS_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), '../../audioset_tagging_cnn/pytorch')
 )
 
-# Add to sys.path so pytorch_utils and other PANNs deps resolve correctly
+# pytorch_utils etc. live next to models.py — needs to be on sys.path.
 if PANNS_DIR not in sys.path:
     sys.path.insert(0, PANNS_DIR)
 
-# Load PANNs models.py directly by file path to avoid naming conflict with src/models/
+# Loaded by path instead of `import models` because PANNs' models.py would
+# collide with this package (src/models/).
 spec = importlib.util.spec_from_file_location("panns_models", os.path.join(PANNS_DIR, "models.py"))
 panns_models = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(panns_models)
@@ -55,7 +55,6 @@ class CNN14ProxyClassifier(nn.Module):
                 param.requires_grad = False
             print("Base CNN14 frozen — only classifier head will train")
 
-        # Binary classification head
         self.classifier = nn.Sequential(
             nn.Linear(2048, 256),
             nn.ReLU(),
@@ -64,11 +63,6 @@ class CNN14ProxyClassifier(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        x: [batch, samples] — raw waveform at 16kHz
-        returns: [batch, num_classes]
-        """
-        output_dict = self.base(x)
-        embedding = output_dict['embedding']  # [batch, 2048]
-        logits = self.classifier(embedding)
-        return logits
+        # x: [batch, samples] at 16 kHz.
+        embedding = self.base(x)['embedding']
+        return self.classifier(embedding)

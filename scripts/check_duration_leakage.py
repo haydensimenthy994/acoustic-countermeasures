@@ -1,23 +1,10 @@
-"""
-Check whether clip duration is a class-distinguishing feature.
+"""Check whether clip duration is leaking the class label.
 
-The `DroneAudioDataset` right-pads short clips with zeros up to 80 000
-samples (5 s @ 16 kHz). If drone and no_drone clips have systematically
-different native durations, the model could be learning "where the
-signal ends" as a class shortcut rather than acoustic content.
-
-This script:
-  1. Reads `data/metadata/split_metadata.csv`.
-  2. For every row, reads the native duration with `soundfile.info`.
-  3. Reports per-class summary statistics (n, min, median, mean, max).
-  4. Runs a Mann-Whitney U test on drone vs no_drone durations
-     (split-by-split). A small p-value + large effect size indicates
-     duration leakage.
-  5. Writes the per-clip durations to
-     `outputs/results/duration_audit.csv` for downstream plotting.
-
-Run:
-    python scripts/check_duration_leakage.py
+DroneAudioDataset right-pads everything to 5 s. If drone and no_drone clips
+differ systematically in native duration, the model could be learning "where
+the signal ends" rather than anything acoustic. This runs Mann-Whitney U on
+drone vs no_drone durations per split and writes per-clip durations to
+outputs/results/duration_audit.csv.
 """
 from __future__ import annotations
 
@@ -85,8 +72,7 @@ def main() -> None:
         if len(d) == 0 or len(n) == 0:
             continue
         u_stat, p = mannwhitneyu(d, n, alternative="two-sided")
-        # Rank-biserial correlation as effect size — sign indicates direction,
-        # |effect| close to 1 means strong separation.
+        # Rank-biserial correlation. |effect| near 1 = strong separation.
         n1, n2 = len(d), len(n)
         effect = 1 - (2 * u_stat) / (n1 * n2)
         print(

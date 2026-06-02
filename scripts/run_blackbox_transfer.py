@@ -1,19 +1,8 @@
-"""
-run_blackbox_transfer.py
+"""Black-box transfer evaluation: craft adversaries on CNN14 (raw waveform),
+then evaluate them through the matched LogMelSpectrogram on ProxyAudioCNN.
 
-Black-box transfer evaluation for Honours thesis.
-
-Strategy:
-  1. Craft adversarial examples (FGSM / PGD / EOT-PGD) against the white-box
-     source model (CNN14ProxyClassifier) using raw waveforms.
-  2. Convert the adversarial waveforms to log-mel spectrograms using the
-     EXACT same LogMelSpectrogram class used during ProxyAudioCNN training.
-  3. Evaluate transferability on the black-box target model (ProxyAudioCNN),
-     which was trained independently from scratch and has never seen CNN14 gradients.
-
-Input format difference (critical):
-  CNN14    : raw waveform      [batch, 80000]       use_raw_waveform=True
-  ProxyCNN : mel-spectrogram   [batch, n_mels, time] use_raw_waveform=False
+ProxyAudioCNN was trained from scratch — it never saw CNN14's gradients, so
+this is a real black-box transfer setting.
 """
 
 from __future__ import annotations
@@ -44,10 +33,6 @@ from src.attacks.eot_pgd import (
 from src.utils.seed import set_seed
 
 
-# ---------------------------------------------------------------------------
-# Transfer evaluation helpers
-# ---------------------------------------------------------------------------
-
 def evaluate_transfer_fgsm(
     source_model: torch.nn.Module,
     target_model: torch.nn.Module,
@@ -56,10 +41,7 @@ def evaluate_transfer_fgsm(
     epsilon: float,
     device: torch.device,
 ) -> dict:
-    """
-    Craft FGSM adversarial waveforms on source_model (CNN14),
-    convert to log-mel spectrograms, evaluate on target_model (ProxyAudioCNN).
-    """
+    """FGSM on the source model (CNN14), evaluated through mel on the target."""
     source_model.eval()
     target_model.eval()
 
@@ -71,10 +53,10 @@ def evaluate_transfer_fgsm(
     snr_values: list[float] = []
 
     for batch in loader:
-        waveforms = batch["features"].to(device)   # [batch, 80000]
+        waveforms = batch["features"].to(device)
         labels    = batch["label"].to(device)
 
-        # Only attack samples the source model classifies correctly
+        # Conditional ASR: only attack source-correct clips.
         with torch.no_grad():
             src_preds = source_model(waveforms).argmax(dim=1)
         correct_mask = src_preds == labels
@@ -84,7 +66,6 @@ def evaluate_transfer_fgsm(
         wav_correct    = waveforms[correct_mask].detach()
         labels_correct = labels[correct_mask]
 
-        # Craft adversarial waveform against CNN14 (white-box)
         adv_wav, _ = fgsm_attack(
             source_model, wav_correct, labels_correct, epsilon, device
         )
@@ -94,9 +75,8 @@ def evaluate_transfer_fgsm(
         linf_norms.append(metrics["linf_norm"])
         snr_values.append(metrics["snr_db"])
 
-        # Convert to log-mel for ProxyAudioCNN (exact training transform)
         with torch.no_grad():
-            adv_mel   = mel_transform(adv_wav)      # [b, n_mels, time]
+            adv_mel   = mel_transform(adv_wav)
             clean_mel = mel_transform(wav_correct)
 
             clean_probs_tgt = torch.softmax(target_model(clean_mel), dim=1)
@@ -138,10 +118,7 @@ def evaluate_transfer_pgd(
     num_steps: int = 40,
     device: torch.device = torch.device("cpu"),
 ) -> dict:
-    """
-    Craft PGD adversarial waveforms on source_model (CNN14),
-    convert to log-mel spectrograms, evaluate on target_model (ProxyAudioCNN).
-    """
+    """PGD on the source model (CNN14), evaluated through mel on the target."""
     source_model.eval()
     target_model.eval()
     alpha = epsilon / 10
@@ -166,7 +143,7 @@ def evaluate_transfer_pgd(
         wav_correct    = waveforms[correct_mask].detach()
         labels_correct = labels[correct_mask]
 
-        # Start from clean (not random L-inf noise) so transfer ASR scales with epsilon.
+        # random_start=False — keeps transfer ASR monotonic in epsilon.
         adv_wav, _ = pgd_attack(
             source_model, wav_correct, labels_correct,
             epsilon=epsilon, alpha=alpha, num_steps=num_steps, device=device,
@@ -224,11 +201,7 @@ def evaluate_transfer_eot_pgd(
     num_eot_samples: int = 5,
     device: torch.device = torch.device("cpu"),
 ) -> dict:
-    """
-    Craft EOT-PGD adversarial waveforms on source_model (CNN14),
-    convert to log-mel spectrograms, evaluate on target_model (ProxyAudioCNN).
-    Reports both digital transfer ASR and OTA transfer ASR.
-    """
+    """EOT-PGD on the source, mel-transformed onto the target. Digital + OTA ASR."""
     source_model.eval()
     target_model.eval()
     alpha    = epsilon / 10
@@ -270,7 +243,7 @@ def evaluate_transfer_eot_pgd(
         metrics = compute_perturbation_metrics(wav_correct, adv_wav)
         snr_values.append(metrics["snr_db"])
 
-        # Digital evaluation on target
+        # Digital target evaluation.
         with torch.no_grad():
             adv_mel   = mel_transform(adv_wav)
             clean_mel = mel_transform(wav_correct)
@@ -282,10 +255,8 @@ def evaluate_transfer_eot_pgd(
 
         correct_adv_digital += (adv_preds_tgt == labels_correct).sum().item()
 
-        # OTA evaluation: same batched RIR + gain + noise stack the
-        # attack saw, then convert to mel for the target model. Uses
-        # apply_eot_transforms_batched so the loop runs ~20x faster
-        # than the previous per-sample version.
+        # OTA: run the adv waveform through the same RIR/gain/noise the
+        # attack used, then convert to mel for the target — 5-vote majority.
         ota_votes = torch.zeros(len(labels_correct), dtype=torch.long, device=device)
         for _ in range(5):
             with torch.no_grad():
@@ -328,16 +299,12 @@ def evaluate_transfer_eot_pgd(
     }
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def main():
     set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}\n")
 
-    # Source model: CNN14 (white-box — used only to craft perturbations)
+    # Source: white-box CNN14, only used to craft perturbations.
     print("Loading source model (CNN14)...")
     source_model = CNN14ProxyClassifier(
         num_classes=2,
@@ -351,7 +318,7 @@ def main():
     source_model.eval()
     print("  CNN14 loaded (val acc 98.29%)")
 
-    # Target model: ProxyAudioCNN (black-box — no gradient access)
+    # Target: black-box ProxyAudioCNN. Gradients never flow through this one.
     print("Loading target model (ProxyAudioCNN)...")
     target_model = ProxyAudioCNN(
         input_channels=1,
@@ -366,12 +333,11 @@ def main():
     target_model.eval()
     print("  ProxyAudioCNN loaded (val acc 97.07%)")
 
-    # Mel transform — exact same class and defaults used during ProxyAudioCNN training
+    # Must be the same class/defaults used during ProxyAudioCNN training.
     print("Building mel transform (LogMelSpectrogram)...")
     mel_transform = LogMelSpectrogram().to(device)
     print("  Mel transform ready")
 
-    # Dataset — raw waveform (attacks operate on waveforms)
     print("\nLoading test dataset...")
     test_dataset = DroneAudioDataset(
         metadata_csv="data/metadata/split_metadata.csv",
@@ -385,7 +351,6 @@ def main():
     )
     print(f"  Test samples: {len(test_dataset)}")
 
-    # RIR bank for EOT (seeded for bit-reproducible runs)
     print("\nPrecomputing RIR bank (20 rooms, seed=42)...")
     rir_bank    = build_rir_bank(n=20, sample_rate=16000, seed=42)
     rir_kernels = build_rir_bank_tensors(rir_bank, max_len=512, device=device)
@@ -402,7 +367,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     def _save_partial():
-        """Kill-resilient: dump everything we have so far on every iteration."""
+        # Called after every epsilon so Ctrl+C never wipes a run.
         if pgd_results:
             pd.DataFrame(pgd_results).to_csv(output_dir / "blackbox_pgd_transfer.csv", index=False)
         if eot_results:
@@ -416,8 +381,8 @@ def main():
                 "eot_transfer":  eot_results,
             }, f, indent=2)
 
-    # PGD / EOT before FGSM so FGSM never leaves requires_grad on batch tensors.
-    # PGD transfer
+    # Run PGD/EOT first — FGSM mutates requires_grad on the batch tensors,
+    # so doing it last avoids cross-contamination between attacks.
     print("\n" + "=" * 60)
     print("PGD TRANSFER (CNN14 → ProxyAudioCNN)")
     print("=" * 60)
@@ -437,7 +402,6 @@ def main():
             f"{r['avg_snr_db']:.2f}  [saved]"
         )
 
-    # EOT-PGD transfer
     print("\n" + "=" * 60)
     print("EOT-PGD TRANSFER (CNN14 → ProxyAudioCNN)")
     print("=" * 60)
@@ -461,7 +425,6 @@ def main():
             f"{r['avg_snr_db']:.2f}  [saved]"
         )
 
-    # FGSM transfer
     print("\n" + "=" * 60)
     print("FGSM TRANSFER (CNN14 → ProxyAudioCNN)")
     print("=" * 60)
@@ -487,8 +450,8 @@ def main():
         "eot_transfer":  eot_results,
     }
 
-    # Summary — read white-box ASR from CSVs rather than hardcoding,
-    # so the table stays in sync if upstream experiments are re-run.
+    # Pull white-box numbers from the CSVs so the summary stays in sync
+    # if the upstream experiments are re-run.
     print("\n" + "=" * 60)
     print("SUMMARY — Transfer ASR vs White-box ASR (ε = 0.001)")
     print("=" * 60)

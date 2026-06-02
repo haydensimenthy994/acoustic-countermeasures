@@ -1,17 +1,4 @@
-"""
-Figure 2: Confusion matrix on the clean test set using the best CNN14 checkpoint.
-
-Loads best_model_cnn14.pt, evaluates on the held-out test split, and plots
-the confusion matrix alongside per-class precision/recall.
-
-Run:
-    python -m src.viz.fig2_confusion_matrix
-
-INPUT:
-    outputs/checkpoints/best_model_cnn14.pt
-    outputs/checkpoints/Cnn14_16k_mAP=0.438.pth
-    data/metadata/split_metadata.csv
-"""
+"""Figure 2 — clean-test confusion matrix for the best CNN14 checkpoint."""
 import json
 import numpy as np
 import torch
@@ -53,7 +40,6 @@ def plot_confusion_matrix(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # --- Load model (same pattern as run_pgd.py) ---
     model = CNN14ProxyClassifier(
         num_classes=2,
         pretrained_path=pann_path,
@@ -64,7 +50,6 @@ def plot_confusion_matrix(
     model.eval()
     print("Loaded CNN14 model")
 
-    # --- Load test dataset (same pattern as run_pgd.py) ---
     test_dataset = DroneAudioDataset(
         metadata_csv=split_csv,
         config_path="configs/data.yaml",
@@ -76,18 +61,15 @@ def plot_confusion_matrix(
                              shuffle=False, num_workers=0)
     print(f"Test samples: {len(test_dataset)}")
 
-    # --- Run inference ---
     y_true, y_pred = collect_predictions(model, test_loader, device)
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
 
-    # --- Metrics ---
     acc  = accuracy_score(y_true, y_pred)
     prec = precision_score(y_true, y_pred, pos_label=1, zero_division=0)
     rec  = recall_score(y_true, y_pred, pos_label=1, zero_division=0)
     f1   = f1_score(y_true, y_pred, pos_label=1, zero_division=0)
     tn, fp, fn, tp = cm.ravel()
 
-    # --- Plot ---
     fig, (ax_cm, ax_txt) = plt.subplots(
         1, 2, figsize=(11, 4.8),
         gridspec_kw={"width_ratios": [1.2, 1]},
@@ -101,7 +83,6 @@ def plot_confusion_matrix(
     ax_cm.set_title("(a) Confusion matrix — clean test set")
     ax_cm.grid(False)
 
-    # Annotate cells
     thresh = cm.max() / 2
     for i in range(2):
         for j in range(2):
@@ -111,7 +92,6 @@ def plot_confusion_matrix(
                        fontsize=18, fontweight="bold")
     plt.colorbar(im, ax=ax_cm, fraction=0.046, pad=0.04)
 
-    # Side panel with metrics
     ax_txt.axis("off")
     text = (
         f"Clean test-set performance\n"
@@ -142,7 +122,7 @@ def plot_confusion_matrix(
     paths = save_fig(fig, outname)
     plt.close(fig)
 
-    # Also dump numbers to JSON for future reuse
+    # Dump the raw numbers too so later figures don't have to re-run inference.
     from pathlib import Path
     Path("outputs/results").mkdir(parents=True, exist_ok=True)
     with open("outputs/results/clean_baseline_confusion.json", "w") as f:

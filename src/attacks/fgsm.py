@@ -6,20 +6,16 @@ import numpy as np
 
 
 def compute_perturbation_metrics(original: torch.Tensor, perturbed: torch.Tensor) -> dict:
-    """Compute L2 norm, L-inf norm, and SNR of perturbation."""
+    """L2, L-inf and SNR (dB) of the perturbation, averaged over the batch."""
     perturbation = perturbed - original
 
-    # L2 norm (average across batch)
     l2 = perturbation.norm(p=2, dim=-1).mean().item()
-
-    # L-inf norm (average across batch)
     linf = perturbation.abs().max(dim=-1).values.mean().item()
 
-    # SNR in dB — only compute for samples with non-silent signal
     signal_power = original.pow(2).mean(dim=-1)
     noise_power = perturbation.pow(2).mean(dim=-1)
 
-    # Filter out silent samples (signal power too low)
+    # Silent clips would blow up the SNR — leave them out.
     valid_mask = signal_power > 1e-6
     if valid_mask.sum() > 0:
         snr_per_sample = 10 * torch.log10(
@@ -40,7 +36,7 @@ def fgsm_attack(
     device: torch.device = torch.device("cpu"),
 ) -> tuple[torch.Tensor, torch.Tensor]:
     model.eval()
-    # Clone so requires_grad is not left on dataloader / masked batch tensors.
+    # Clone — otherwise requires_grad sticks on whatever tensor was passed in.
     features = features.detach().clone().to(device).requires_grad_(True)
     labels = labels.to(device)
 
@@ -87,7 +83,6 @@ def evaluate_fgsm(
 
         adv_features, _ = fgsm_attack(model, features_correct, labels_correct, epsilon, device)
 
-        # Perturbation metrics
         metrics = compute_perturbation_metrics(features_correct, adv_features)
         l2_norms.append(metrics["l2_norm"])
         linf_norms.append(metrics["linf_norm"])

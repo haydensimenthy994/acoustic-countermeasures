@@ -1,9 +1,6 @@
-"""
-EOT-PGD black-box transfer only (CNN14 -> ProxyAudioCNN).
+"""Black-box EOT-PGD transfer from CNN14 to ProxyAudioCNN.
 
-Usage:
-  python scripts/run_blackbox_eot_transfer.py
-  python scripts/run_blackbox_eot_transfer.py --epsilons 0.01,0.02,0.05 --resume
+PGD-only version is in run_blackbox_pgd_transfer.py.
 """
 from __future__ import annotations
 

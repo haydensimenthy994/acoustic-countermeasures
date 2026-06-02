@@ -1,23 +1,16 @@
-# Final reproducible re-run of every experiment used in the thesis.
-# All scripts use set_seed(42) for bit-stable RNG state; the wrapper just
-# chains them, logs to one file, and backs up any pre-existing results.
+# Re-run every experiment in the thesis end-to-end.
 #
-# Usage (from project root):
-#   .\scripts\run_all_final.ps1
-#
-# Will:
-#   - back up   outputs/results/                  -> outputs/results_backup_<ts>/
-#   - log to    outputs/logs/final_run_<ts>.log
-#   - continue past per-step failures (so a single broken script does not
-#     tank the rest of the matrix); failures are summarised at the end.
+# All scripts seed with set_seed(42) so the numbers are bit-stable. This
+# wrapper just chains them, tees everything to a log, backs up the existing
+# outputs/results/, and keeps going if a step fails so one broken script
+# doesn't kill the whole matrix.
 
 $ErrorActionPreference = "Continue"
-$env:PYTHONUNBUFFERED  = "1"   # so Tee captures progress as it streams
+$env:PYTHONUNBUFFERED  = "1"   # Tee can't catch buffered Python output otherwise.
 
 $startedAt = Get-Date
 $ts        = $startedAt.ToString("yyyyMMdd_HHmmss")
 
-# --- venv -------------------------------------------------------------------
 if (-not $env:VIRTUAL_ENV) {
     & .\.venv\Scripts\Activate.ps1
 }
@@ -26,7 +19,6 @@ Write-Host "python:        $(python -c 'import sys; print(sys.version.split()[0]
 Write-Host "torch / cuda:  $(python -c 'import torch; print(torch.__version__, torch.cuda.is_available())')"
 Write-Host ""
 
-# --- backup -----------------------------------------------------------------
 $backupDir = "outputs/results_backup_$ts"
 if (Test-Path "outputs/results") {
     Copy-Item -Recurse -Path "outputs/results" -Destination $backupDir
@@ -38,7 +30,6 @@ New-Item -ItemType Directory -Force -Path "outputs/results" | Out-Null
 $logFile = "outputs/logs/final_run_$ts.log"
 "=== final run started $startedAt ===" | Out-File $logFile -Encoding utf8
 
-# --- step runner ------------------------------------------------------------
 $script:results  = @()
 $script:failures = @()
 
@@ -61,7 +52,6 @@ function Run-Step {
 
     $stepStart = Get-Date
     try {
-        # Run + tee
         Invoke-Expression $Cmd 2>&1 | Tee-Object -FilePath $logFile -Append
         $code = $LASTEXITCODE
     } catch {
@@ -84,9 +74,7 @@ function Run-Step {
     Add-Content $logFile ("  -> {0}  (exit={1})  elapsed {2}" -f $Name, $code, $row.Duration)
 }
 
-# ============================================================================
-#  IN-DISTRIBUTION (Drone-Audio-Dataset test split, 410 clips)
-# ============================================================================
+# In-distribution: Drone-Audio-Dataset test split (~410 clips).
 Run-Step "in-dist  / 01 / CNN14 clean baseline"      "python scripts\evaluate_baseline.py"
 Run-Step "in-dist  / 02 / FGSM (5 epsilons)"          "python scripts\run_fgsm.py"
 Run-Step "in-dist  / 03 / PGD  (5 epsilons, 40 step)" "python scripts\run_pgd.py"
@@ -94,17 +82,12 @@ Run-Step "in-dist  / 04 / EOT-PGD (2 eps, 20 step)"   "python scripts\run_eot_pg
 Run-Step "in-dist  / 05 / baselines (jam + spoof)"    "python scripts\run_baselines.py"
 Run-Step "in-dist  / 06 / black-box transfer"         "python scripts\run_blackbox_transfer.py"
 
-# ============================================================================
-#  CROSS-DATASET (SWARM, 3 556 clips)
-# ============================================================================
+# Cross-dataset: SWARM (~3,556 clips).
 Run-Step "cross    / 07 / clean evaluation (CNN14+Proxy)" "python scripts\evaluate_cross_dataset.py"
 Run-Step "cross    / 08 / FGSM + PGD (5 eps each)"        "python scripts\run_cross_dataset_attacks.py --attacks FGSM,PGD --epsilons 0.001,0.005,0.01,0.02,0.05"
 Run-Step "cross    / 09 / baselines (jam + spoof)"        "python scripts\run_cross_dataset_baselines.py"
 Run-Step "cross    / 10 / FGSM transfer"                  "python scripts\run_cross_dataset_transfer.py"
 
-# ============================================================================
-#  SUMMARY
-# ============================================================================
 $totalDur = (Get-Date) - $startedAt
 $summary  = @()
 $summary += ""

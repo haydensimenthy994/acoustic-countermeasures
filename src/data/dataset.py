@@ -92,10 +92,9 @@ class DroneAudioDataset(Dataset):
         label = LABEL_MAP[row["label"]]
 
         if self.use_raw_waveform:
-            # CNN14 expects [batch, samples] — squeeze channel dim
-            features = waveform.squeeze(0)  # [samples]
+            # CNN14 wants raw waveform; ProxyAudioCNN wants mel.
+            features = waveform.squeeze(0)
         else:
-            # ProxyAudioCNN expects mel spectrogram [n_mels, time]
             features = self.feature_extractor(waveform).squeeze(0)
 
         return {

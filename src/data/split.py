@@ -35,7 +35,7 @@ def main() -> None:
 
     df = df.dropna(subset=["label"]).copy()
 
-   # Balance classes by undersampling the majority class
+    # Undersample the majority class so both classes are even.
     min_count = df["label"].value_counts().min()
     balanced_parts = []
     for label, group in df.groupby("label"):

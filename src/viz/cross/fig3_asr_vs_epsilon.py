@@ -1,9 +1,4 @@
-"""
-Cross-dataset Figure 3: FGSM and PGD ASR vs epsilon on SWARM (overall).
-
-INPUT:
-    outputs/results/cross_dataset_attacks.csv  (scope=overall)
-"""
+"""Cross-dataset Figure 3 — FGSM/PGD ASR vs epsilon on SWARM (overall scope)."""
 from __future__ import annotations
 
 import pandas as pd

@@ -1,13 +1,11 @@
-"""
-Figure 3: Attack Success Rate vs epsilon — FGSM and PGD on the same plot.
-"""
+"""Figure 3 — ASR vs epsilon, FGSM and PGD overlaid."""
 import pandas as pd
 import matplotlib.pyplot as plt
 
 from src.viz.style import apply_style, COLORS, save_fig
 
 
-# Try these column names in order — first hit wins
+# Different scripts have used different column names over time; try them all.
 ASR_COLS = ["attack_success_rate", "asr", "ASR", "success_rate"]
 
 
@@ -22,7 +20,7 @@ def _get_asr_column(df, source=""):
 
 
 def _pct(series):
-    """Accept ASR as either 0-1 or 0-100. Return 0-100."""
+    # Older CSVs store ASR as a fraction, newer ones as a percentage.
     return series * 100 if series.max() <= 1.0 else series
 
 
@@ -45,7 +43,7 @@ def plot_asr_vs_epsilon(
     ax.plot(pgd["epsilon"], pgd_asr,
             marker="s", color=COLORS["pgd"],  label="PGD (40 iter)")
 
-    # annotate the headline result — smallest epsilon PGD row
+    # Headline number: PGD's ASR at the smallest epsilon we ran.
     pgd_sorted = pgd.sort_values("epsilon").reset_index(drop=True)
     pgd_min_eps = pgd_sorted.iloc[0]["epsilon"]
     pgd_min_asr = _pct(_get_asr_column(pgd_sorted, pgd_csv)).iloc[0]

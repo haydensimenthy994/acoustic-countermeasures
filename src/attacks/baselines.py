@@ -6,19 +6,11 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 
-# ---------------------------------------------------------------------------
-# Jamming
-# ---------------------------------------------------------------------------
-
 def jamming_attack(
     waveform: torch.Tensor,
     snr_db: float,
 ) -> torch.Tensor:
-    """
-    Simulate acoustic jamming by adding broadband Gaussian noise
-    at a specified SNR level.
-    waveform: [samples]
-    """
+    """Mix broadband Gaussian noise into the waveform at the given SNR."""
     signal_power = waveform.pow(2).mean()
     if signal_power < 1e-8:
         return waveform
@@ -33,26 +25,20 @@ def evaluate_jamming(
     snr_levels: list,
     device: torch.device = torch.device("cpu"),
 ) -> list[dict]:
-    """
-    Evaluate classifier robustness under jamming noise at varying SNR levels.
+    """Sweep classifier accuracy across jamming SNR levels (lower = louder noise).
 
-    For each SNR level, reports BOTH:
-      - conditional_asr: (correct_clean AND wrong_jammed) / correct_clean
-            — same denominator as the gradient-based attacks, so directly
-            comparable on Figure 5.
-      - asr: 1 - accuracy on all samples
-            — kept for backwards compatibility with older result files.
-
-    Lower SNR = stronger jamming (more noise).
+    Reports both `conditional_asr` (flip rate over clean-correct clips, the
+    apples-to-apples version used in Figure 5) and the legacy population-level
+    `asr` so older result CSVs still round-trip.
     """
     model.eval()
     results = []
 
     for snr_db in snr_levels:
         total_all = 0
-        correct_all = 0           # for population accuracy
-        clean_correct = 0         # denominator for conditional ASR
-        flipped = 0               # numerator   for conditional ASR
+        correct_all = 0
+        clean_correct = 0        # denominator for conditional ASR
+        flipped = 0              # numerator
         confidence_list = []
 
         with torch.no_grad():
@@ -73,12 +59,10 @@ def evaluate_jamming(
                 probs = torch.softmax(logits, dim=1)
                 preds = logits.argmax(dim=1)
 
-                # Population accuracy / ASR
                 correct_all += (preds == labels).sum().item()
                 total_all += len(labels)
 
-                # Conditional ASR: only count flips on clips that were
-                # correctly classified on the clean signal
+                # Conditional ASR only counts clips that were clean-correct.
                 clean_correct += clean_correct_mask.sum().item()
                 flipped_mask = clean_correct_mask & (preds != labels)
                 flipped += flipped_mask.sum().item()
@@ -94,8 +78,8 @@ def evaluate_jamming(
         results.append({
             "snr_db": snr_db,
             "accuracy": accuracy,
-            "asr": population_asr,                       # legacy field
-            "conditional_asr": conditional_asr,          # comparable with gradient attacks
+            "asr": population_asr,                # legacy
+            "conditional_asr": conditional_asr,   # comparable with gradient attacks
             "clean_correct": clean_correct,
             "flipped": flipped,
             "total": total_all,
@@ -111,26 +95,16 @@ def evaluate_jamming(
     return results
 
 
-# ---------------------------------------------------------------------------
-# Drone-recall sanity check (was previously mis-named `evaluate_spoofing`)
-# ---------------------------------------------------------------------------
-
 def evaluate_drone_recall(
     model: nn.Module,
     loader: DataLoader,
     device: torch.device = torch.device("cpu"),
 ) -> dict:
-    """
-    Sanity check on the trained classifier — NOT an attack.
+    """Per-class recall on the test set. Not an attack — just a sanity check.
 
-    Reports:
-      - drone_recall   : P(pred = drone | label = drone)
-      - no_drone_recall: P(pred = no_drone | label = no_drone)
-
-    This was previously published as `spoofing_asr` in earlier result files,
-    which was a misnomer — a drone clip predicted as drone is a true
-    positive, not a false alarm. Kept here under its correct name so the
-    historical number is reproducible.
+    Earlier result files saved this under `spoofing_asr`, which was wrong
+    (it's a true positive, not a false alarm). Kept here under the correct
+    name so the old number is still reproducible.
     """
     model.eval()
 
@@ -169,10 +143,6 @@ def evaluate_drone_recall(
     }
 
 
-# ---------------------------------------------------------------------------
-# Real acoustic-spoofing baseline
-# ---------------------------------------------------------------------------
-
 def evaluate_spoofing(
     model: nn.Module,
     loader: DataLoader,
@@ -180,22 +150,12 @@ def evaluate_spoofing(
     device: torch.device = torch.device("cpu"),
     seed: int | None = 42,
 ) -> list[dict]:
-    """
-    Real acoustic-spoofing baseline.
+    """Acoustic-spoofing baseline: an attacker plays drone audio over a no-drone clip.
 
-    Scenario: an attacker plays drone audio near a microphone that is
-    monitoring a real (no-drone) environment. We measure how often the
-    drone signal, mixed into the no-drone background at a controlled
-    SNR, induces a `drone` prediction on a sample the model previously
-    classified correctly as `no_drone`.
-
-    SNR_dB here is the no_drone:drone power ratio. High SNR = quiet
-    drone (far away), low SNR = loud drone (close to the mic).
-
-    For each SNR level we report:
-      - spoofing_asr : P(pred = drone after mix | clean pred = no_drone, label = no_drone)
-                       computed over the clean-correct no_drone subset.
-      - confidence drop on the no_drone class.
+    SNR_dB is the no_drone:drone power ratio — high SNR means the drone is
+    faint/far away, low SNR means it's loud/close. `spoofing_asr` is the flip
+    rate on clips the model was clean-correct on, so it's comparable to the
+    gradient attacks.
     """
     model.eval()
 
@@ -203,7 +163,6 @@ def evaluate_spoofing(
         torch.manual_seed(seed)
         np.random.seed(seed)
 
-    # Collect clips that the model classifies correctly when clean
     correct_no_drone = []
     drone_clips = []
 
@@ -237,8 +196,7 @@ def evaluate_spoofing(
         n = 0
 
         for clean_wav in correct_no_drone:
-            # Pick a random drone clip and scale it so the
-            # no_drone:drone power ratio matches snr_db.
+            # Pick a random drone clip and scale it to hit the target SNR.
             drone_wav = drone_stack[np.random.randint(len(drone_stack))]
 
             sig_pow = clean_wav.pow(2).mean()
@@ -257,8 +215,8 @@ def evaluate_spoofing(
                 mix_probs = torch.softmax(mix_logits, dim=1)
                 mix_pred = mix_logits.argmax(dim=1).item()
 
-            clean_conf_sum += clean_probs[0, 0].item()    # P(no_drone) before
-            mix_conf_sum += mix_probs[0, 0].item()        # P(no_drone) after
+            clean_conf_sum += clean_probs[0, 0].item()
+            mix_conf_sum += mix_probs[0, 0].item()
             n += 1
             if mix_pred == 1:
                 flipped += 1
