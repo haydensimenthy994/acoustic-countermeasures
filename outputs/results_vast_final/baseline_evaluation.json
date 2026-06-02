@@ -1,5 +1,7 @@
 {
   "model": "CNN14ProxyClassifier",
+  "checkpoint": "outputs/checkpoints/best_model_cnn14.pt",
+  "use_raw_waveform": true,
   "test_samples": 410,
   "accuracy": 0.975609756097561,
   "f1_score": 0.9759615384615384,

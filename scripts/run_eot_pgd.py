@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import torch
 import pandas as pd
@@ -19,8 +20,30 @@ from src.attacks.eot_pgd import (
 )
 from src.utils.seed import set_seed
 
+DEFAULT_EPSILONS = [0.001, 0.005, 0.01, 0.02, 0.05]
+
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="In-distribution EOT-PGD on CNN14 test set.")
+    p.add_argument(
+        "--epsilons",
+        default=",".join(str(e) for e in DEFAULT_EPSILONS),
+        help="Comma-separated epsilons (default: all five).",
+    )
+    p.add_argument(
+        "--resume", action="store_true",
+        help="Skip epsilons already present in the output CSV.",
+    )
+    p.add_argument("--num-steps", type=int, default=20)
+    p.add_argument("--num-eot-samples", type=int, default=5)
+    p.add_argument("--batch-size", type=int, default=8)
+    return p.parse_args()
+
 
 def main():
+    args = _parse_args()
+    epsilons = [float(e) for e in args.epsilons.split(",") if e.strip()]
+
     set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -57,18 +80,23 @@ def main():
     # batch_size=8 fits comfortably in 8 GB VRAM and roughly halves the
     # number of CNN14 forward+backward passes vs the previous batch_size=4.
     test_loader = DataLoader(
-        test_dataset, batch_size=8, shuffle=False, num_workers=0,
+        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0,
     )
     print(f"Test samples: {len(test_dataset)}\n")
 
     # ---- attack ---------------------------------------------------------
-    epsilons = [0.001, 0.005]
-    all_results = []
-
     output_dir = Path("outputs/results")
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "eot_pgd_results_cnn14.csv"
     json_path = output_dir / "eot_pgd_results_cnn14.json"
+
+    all_results: list[dict] = []
+    done: set[float] = set()
+    if args.resume and csv_path.exists():
+        prev = pd.read_csv(csv_path)
+        all_results = prev.to_dict("records")
+        done = {float(r["epsilon"]) for r in all_results}
+        print(f"[resume] already done: {sorted(done)}")
 
     print("EOT-PGD Results (CNN14, 20 steps, 5 EOT samples):")
     print(
@@ -78,13 +106,16 @@ def main():
     print("-" * 62)
 
     for eps in epsilons:
+        if eps in done:
+            print(f"\nSkipping epsilon={eps} [already in CSV]", flush=True)
+            continue
         print(f"\nRunning epsilon={eps}...", flush=True)
         results = evaluate_eot_pgd(
             model,
             test_loader,
             epsilon=eps,
-            num_steps=20,
-            num_eot_samples=5,
+            num_steps=args.num_steps,
+            num_eot_samples=args.num_eot_samples,
             sample_rate=16000,
             device=device,
             rir_kernels=rir_kernels,

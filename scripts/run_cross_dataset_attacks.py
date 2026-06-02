@@ -57,6 +57,11 @@ from torch.utils.data import DataLoader
 
 from src.attacks.fgsm import fgsm_attack, compute_perturbation_metrics
 from src.attacks.pgd import pgd_attack
+from src.attacks.eot_pgd import (
+    eot_pgd_attack,
+    build_rir_bank,
+    build_rir_bank_tensors,
+)
 from src.data.dataset import DroneAudioDataset
 from src.models.cnn14_proxy import CNN14ProxyClassifier
 from src.utils.seed import set_seed
@@ -64,7 +69,9 @@ from src.utils.seed import set_seed
 
 DEFAULT_EPSILONS    = [0.001, 0.005, 0.01, 0.02, 0.05]
 DEFAULT_PGD_STEPS   = 20
-DEFAULT_BATCH_SIZE  = 16
+DEFAULT_EOT_STEPS   = 20
+DEFAULT_EOT_SAMPLES = 5
+DEFAULT_BATCH_SIZE  = 8   # smaller batch for EOT-PGD VRAM
 MANIFEST            = "data/metadata/swarm_test_manifest.csv"
 
 
@@ -79,6 +86,9 @@ def _attack_pass(
     epsilon: float,
     device: torch.device,
     pgd_steps: int = DEFAULT_PGD_STEPS,
+    eot_steps: int = DEFAULT_EOT_STEPS,
+    num_eot_samples: int = DEFAULT_EOT_SAMPLES,
+    rir_kernels: torch.Tensor | None = None,
 ) -> list[dict]:
     """Run one (attack, epsilon) pass over the loader. Returns one row
     per *clean-correct* sample with adversarial-prediction metadata."""
@@ -113,6 +123,14 @@ def _attack_pass(
                 model, wav_correct, labels_correct,
                 epsilon=epsilon, alpha=epsilon / 10,
                 num_steps=pgd_steps, device=device,
+                random_start=False,
+            )
+        elif attack == "EOT-PGD":
+            adv, _ = eot_pgd_attack(
+                model, wav_correct, labels_correct,
+                epsilon=epsilon, alpha=epsilon / 10,
+                num_steps=eot_steps, num_eot_samples=num_eot_samples,
+                device=device, rir_kernels=rir_kernels,
                 random_start=False,
             )
         else:
@@ -253,7 +271,7 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--attacks", default="FGSM,PGD",
-        help='Comma-separated subset of {"FGSM","PGD"} (default: FGSM,PGD).',
+        help='Comma-separated subset of {"FGSM","PGD","EOT-PGD"}.',
     )
     p.add_argument(
         "--epsilons",
@@ -263,6 +281,14 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--pgd-steps", type=int, default=DEFAULT_PGD_STEPS,
         help=f"PGD iterations (default: {DEFAULT_PGD_STEPS}).",
+    )
+    p.add_argument(
+        "--eot-steps", type=int, default=DEFAULT_EOT_STEPS,
+        help=f"EOT-PGD iterations (default: {DEFAULT_EOT_STEPS}).",
+    )
+    p.add_argument(
+        "--num-eot-samples", type=int, default=DEFAULT_EOT_SAMPLES,
+        help=f"EOT samples per PGD step (default: {DEFAULT_EOT_SAMPLES}).",
     )
     p.add_argument(
         "--batch-size", type=int, default=DEFAULT_BATCH_SIZE,
@@ -281,7 +307,7 @@ def main() -> None:
     attacks  = [a.strip().upper() for a in args.attacks.split(",") if a.strip()]
     epsilons = [float(e) for e in args.epsilons.split(",") if e.strip()]
     for a in attacks:
-        if a not in ("FGSM", "PGD"):
+        if a not in ("FGSM", "PGD", "EOT-PGD"):
             print(f"ERROR: unknown attack '{a}'", file=sys.stderr)
             sys.exit(1)
 
@@ -289,7 +315,15 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     print(f"Attacks: {attacks}  epsilons: {epsilons}  "
-          f"pgd_steps: {args.pgd_steps}  batch: {args.batch_size}\n")
+          f"pgd_steps: {args.pgd_steps}  eot_steps: {args.eot_steps}  "
+          f"batch: {args.batch_size}\n")
+
+    rir_kernels = None
+    if "EOT-PGD" in attacks:
+        print("Precomputing RIR bank (20 rooms, seed=42)...")
+        rir_bank = build_rir_bank(n=20, sample_rate=16000, seed=42)
+        rir_kernels = build_rir_bank_tensors(rir_bank, max_len=512, device=device)
+        print(f"RIR kernels ready: {rir_kernels.shape}\n")
 
     if not Path(MANIFEST).exists():
         print(f"ERROR: {MANIFEST} not found. "
@@ -347,6 +381,9 @@ def main() -> None:
             rows = _attack_pass(
                 model, loader, attack, eps, device,
                 pgd_steps=args.pgd_steps,
+                eot_steps=args.eot_steps,
+                num_eot_samples=args.num_eot_samples,
+                rir_kernels=rir_kernels,
             )
             all_rows.extend(rows)
             # Incremental save -- kill-resilient.

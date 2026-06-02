@@ -39,6 +39,12 @@ import torch
 from torch.utils.data import DataLoader
 
 from src.attacks.fgsm import fgsm_attack, compute_perturbation_metrics
+from src.attacks.pgd import pgd_attack
+from src.attacks.eot_pgd import (
+    eot_pgd_attack,
+    build_rir_bank,
+    build_rir_bank_tensors,
+)
 from src.data.dataset import DroneAudioDataset
 from src.features.spectrograms import LogMelSpectrogram
 from src.models.cnn14_proxy import CNN14ProxyClassifier
@@ -46,8 +52,12 @@ from src.models.pann_proxy import ProxyAudioCNN
 from src.utils.seed import set_seed
 
 
-DEFAULT_EPSILONS = [0.001, 0.005, 0.01, 0.02, 0.05]
-MANIFEST         = "data/metadata/swarm_test_manifest.csv"
+DEFAULT_EPSILONS    = [0.001, 0.005, 0.01, 0.02, 0.05]
+DEFAULT_PGD_STEPS   = 20
+DEFAULT_EOT_STEPS   = 20
+DEFAULT_EOT_SAMPLES = 5
+DEFAULT_BATCH_SIZE  = 8
+MANIFEST            = "data/metadata/swarm_test_manifest.csv"
 
 
 # ---------------------------------------------------------------------------
@@ -59,11 +69,17 @@ def _transfer_pass(
     target: torch.nn.Module,
     mel: LogMelSpectrogram,
     loader: DataLoader,
+    attack: str,
     epsilon: float,
     device: torch.device,
+    pgd_steps: int = DEFAULT_PGD_STEPS,
+    eot_steps: int = DEFAULT_EOT_STEPS,
+    num_eot_samples: int = DEFAULT_EOT_SAMPLES,
+    rir_kernels: torch.Tensor | None = None,
 ) -> list[dict]:
     """Returns one row per *source-correct* clip with the target
     model's adversarial prediction (raw -> mel -> ProxyAudioCNN)."""
+    attack_key = f"{attack}_transfer"
     rows: list[dict] = []
     snr_accum: list[float] = []
 
@@ -82,15 +98,31 @@ def _transfer_pass(
         y_correct   = y[correct_mask]
         idx_correct = correct_mask.nonzero(as_tuple=False).squeeze(1).cpu().tolist()
 
-        # Craft on CNN14
-        adv, _ = fgsm_attack(source, wav_correct, y_correct, epsilon, device)
+        if attack == "FGSM":
+            adv, _ = fgsm_attack(source, wav_correct, y_correct, epsilon, device)
+        elif attack == "PGD":
+            adv, _ = pgd_attack(
+                source, wav_correct, y_correct,
+                epsilon=epsilon, alpha=epsilon / 10,
+                num_steps=pgd_steps, device=device,
+                random_start=False,
+            )
+        elif attack == "EOT-PGD":
+            adv, _ = eot_pgd_attack(
+                source, wav_correct, y_correct,
+                epsilon=epsilon, alpha=epsilon / 10,
+                num_steps=eot_steps, num_eot_samples=num_eot_samples,
+                device=device, rir_kernels=rir_kernels,
+                random_start=False,
+            )
+        else:
+            raise ValueError(f"unknown attack: {attack}")
 
         m = compute_perturbation_metrics(wav_correct, adv)
         snr_accum.append(m["snr_db"])
 
-        # Evaluate on ProxyAudioCNN via mel-spectrogram
         with torch.no_grad():
-            adv_mel  = mel(adv)
+            adv_mel   = mel(adv)
             tgt_preds = target(adv_mel).argmax(dim=1).cpu().tolist()
         y_list = y_correct.cpu().tolist()
 
@@ -99,13 +131,13 @@ def _transfer_pass(
                 "filepath":   files[batch_i],
                 "label_int":  y_list[i],
                 "adv_pred":   tgt_preds[i],
-                "attack":     "FGSM_transfer",
+                "attack":     attack_key,
                 "epsilon":    epsilon,
                 "snr_db":     m["snr_db"],
             })
 
     print(
-        f"    FGSM_transfer eps={epsilon:<6}  "
+        f"    {attack_key} eps={epsilon:<6}  "
         f"n_correct={len(rows):>5d}  avg_snr={np.mean(snr_accum):>6.2f} dB",
         flush=True,
     )
@@ -148,30 +180,32 @@ def _aggregate(per_sample: pd.DataFrame, manifest: pd.DataFrame) -> tuple[dict, 
     )
 
     flat: list[dict] = []
-    nested: dict = {"by_eps": {}}
-    for eps, sub in df.groupby("epsilon"):
+    nested: dict = {"by_attack_eps": {}}
+    for (attack, eps), sub in df.groupby(["attack", "epsilon"]):
+        key = f"{attack}_eps{eps}"
         entry: dict = {
+            "attack":      attack,
             "epsilon":     float(eps),
             "overall":     _slice(sub),
             "by_label":    {},
             "by_source":   {},
             "by_drone_type": {},
         }
-        flat.append({"epsilon": eps, "scope": "overall", "slice": "all",
-                     **_slice(sub)})
+        flat.append({"attack": attack, "epsilon": eps, "scope": "overall",
+                       "slice": "all", **_slice(sub)})
         for lbl, s in sub.groupby("label"):
             entry["by_label"][str(lbl)] = _slice(s)
-            flat.append({"epsilon": eps, "scope": "label",
+            flat.append({"attack": attack, "epsilon": eps, "scope": "label",
                          "slice": str(lbl), **_slice(s)})
         for src, s in sub.groupby("source_dataset"):
             entry["by_source"][str(src)] = _slice(s)
-            flat.append({"epsilon": eps, "scope": "source_dataset",
+            flat.append({"attack": attack, "epsilon": eps, "scope": "source_dataset",
                          "slice": str(src), **_slice(s)})
         for dt, s in sub[sub["label"] == "drone"].groupby("drone_type"):
             entry["by_drone_type"][str(dt)] = _slice(s)
-            flat.append({"epsilon": eps, "scope": "drone_type",
+            flat.append({"attack": attack, "epsilon": eps, "scope": "drone_type",
                          "slice": str(dt), **_slice(s)})
-        nested["by_eps"][f"eps{eps}"] = entry
+        nested["by_attack_eps"][key] = entry
 
     flat_df = pd.DataFrame(flat)
     flat_df["asr_ci_lo"] = flat_df["asr_ci95"].apply(lambda x: x[0])
@@ -186,7 +220,11 @@ def _aggregate(per_sample: pd.DataFrame, manifest: pd.DataFrame) -> tuple[dict, 
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Cross-dataset CNN14 -> ProxyAudioCNN FGSM transfer.",
+        description="Cross-dataset CNN14 -> ProxyAudioCNN transfer.",
+    )
+    p.add_argument(
+        "--attacks", default="FGSM",
+        help='Comma-separated subset of {"FGSM","PGD","EOT-PGD"}.',
     )
     p.add_argument(
         "--epsilons",
@@ -194,24 +232,48 @@ def _parse_args() -> argparse.Namespace:
         help="Comma-separated epsilons.",
     )
     p.add_argument(
-        "--batch-size", type=int, default=16,
+        "--batch-size", type=int, default=DEFAULT_BATCH_SIZE,
         help="DataLoader batch size.",
     )
     p.add_argument(
+        "--pgd-steps", type=int, default=DEFAULT_PGD_STEPS,
+        help=f"PGD iterations (default: {DEFAULT_PGD_STEPS}).",
+    )
+    p.add_argument(
+        "--eot-steps", type=int, default=DEFAULT_EOT_STEPS,
+        help=f"EOT-PGD iterations (default: {DEFAULT_EOT_STEPS}).",
+    )
+    p.add_argument(
+        "--num-eot-samples", type=int, default=DEFAULT_EOT_SAMPLES,
+        help=f"EOT samples per PGD step (default: {DEFAULT_EOT_SAMPLES}).",
+    )
+    p.add_argument(
         "--resume", action="store_true",
-        help="Skip epsilons already in the per-sample CSV.",
+        help="Skip (attack, eps) pairs already in the per-sample CSV.",
     )
     return p.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
+    attacks  = [a.strip().upper().replace("EOT_PGD", "EOT-PGD") for a in args.attacks.split(",") if a.strip()]
     epsilons = [float(e) for e in args.epsilons.split(",") if e.strip()]
+    for a in attacks:
+        if a not in ("FGSM", "PGD", "EOT-PGD"):
+            print(f"ERROR: unknown attack '{a}'", file=sys.stderr)
+            sys.exit(1)
 
     set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    print(f"Epsilons: {epsilons}  batch: {args.batch_size}\n")
+    print(f"Attacks: {attacks}  epsilons: {epsilons}  batch: {args.batch_size}\n")
+
+    rir_kernels = None
+    if "EOT-PGD" in attacks:
+        print("Precomputing RIR bank (20 rooms, seed=42)...")
+        rir_bank = build_rir_bank(n=20, sample_rate=16000, seed=42)
+        rir_kernels = build_rir_bank_tensors(rir_bank, max_len=512, device=device)
+        print(f"RIR kernels ready: {rir_kernels.shape}\n")
 
     if not Path(MANIFEST).exists():
         print(f"ERROR: {MANIFEST} not found. "
@@ -259,61 +321,72 @@ def main() -> None:
 
     manifest_df = pd.read_csv(MANIFEST)
     all_rows: list[dict] = []
-    done: set[float] = set()
+    done: set[tuple[str, float]] = set()
     if args.resume and per_sample_csv.exists():
         prev = pd.read_csv(per_sample_csv)
         all_rows = prev.to_dict("records")
-        done = {float(r["epsilon"]) for r in all_rows}
+        done = {(r["attack"], float(r["epsilon"])) for r in all_rows}
         print(f"[resume] already done: {sorted(done)}")
 
-    print("Running CNN14 -> ProxyAudioCNN FGSM transfer ...\n")
-    for eps in epsilons:
-        if eps in done:
-            print(f"    FGSM_transfer eps={eps}  [skipped]")
-            continue
-        rows = _transfer_pass(source, target, mel, loader, eps, device)
-        all_rows.extend(rows)
-        # Kill-resilient save
-        pd.DataFrame(all_rows).to_csv(per_sample_csv, index=False)
-        nested, flat = _aggregate(pd.DataFrame(all_rows), manifest_df)
-        flat.to_csv(flat_csv, index=False)
-        with open(nested_json, "w") as f:
-            json.dump(nested, f, indent=2)
+    print("Running CNN14 -> ProxyAudioCNN transfer ...\n")
+    for attack in attacks:
+        attack_key = f"{attack}_transfer"
+        print(f"  {attack}")
+        for eps in epsilons:
+            if (attack_key, eps) in done:
+                print(f"    {attack_key} eps={eps}  [skipped]")
+                continue
+            rows = _transfer_pass(
+                source, target, mel, loader, attack, eps, device,
+                pgd_steps=args.pgd_steps,
+                eot_steps=args.eot_steps,
+                num_eot_samples=args.num_eot_samples,
+                rir_kernels=rir_kernels,
+            )
+            all_rows.extend(rows)
+            pd.DataFrame(all_rows).to_csv(per_sample_csv, index=False)
+            nested, flat = _aggregate(pd.DataFrame(all_rows), manifest_df)
+            flat.to_csv(flat_csv, index=False)
+            with open(nested_json, "w") as f:
+                json.dump(nested, f, indent=2)
 
     # Final report -----------------------------------------------------------
     nested, flat = _aggregate(pd.DataFrame(all_rows), manifest_df)
     print("\n" + "=" * 78)
-    print("CROSS-DATASET CNN14 -> ProxyAudioCNN FGSM TRANSFER ASR")
+    print("CROSS-DATASET CNN14 -> ProxyAudioCNN TRANSFER ASR")
     print("=" * 78)
-    print(f"  {'eps':<8} {'overall':<24} "
-          f"{'alemadi':<22} {'trident':<22} {'wildlife_XC':<22}")
     empty = {"n": 0, "asr": float("nan"),
              "asr_ci95": [float("nan"), float("nan")]}
-    for eps in epsilons:
-        e = nested["by_eps"].get(f"eps{eps}")
-        if e is None:
-            continue
-        src = e["by_source"]
-        def _fmt(s: dict) -> str:
-            if s["n"] == 0:
-                return "  --"
-            return (f"{s['asr']:.3f} ({s['n']})"
-                    f" CI[{s['asr_ci95'][0]:.2f},{s['asr_ci95'][1]:.2f}]")
-        print(f"  {eps:<8.4f} {_fmt(e['overall']):<24} "
-              f"{_fmt(src.get('alemadi', empty)):<22} "
-              f"{_fmt(src.get('trident', empty)):<22} "
-              f"{_fmt(src.get('wildlife_xenocanto', empty)):<22}")
+    for attack in attacks:
+        attack_key = f"{attack}_transfer"
+        print(f"\n  {attack_key}")
+        print(f"  {'eps':<8} {'overall':<24} "
+              f"{'alemadi':<22} {'trident':<22} {'wildlife_XC':<22}")
+        for eps in epsilons:
+            e = nested["by_attack_eps"].get(f"{attack_key}_eps{eps}")
+            if e is None:
+                continue
+            src = e["by_source"]
+            def _fmt(s: dict) -> str:
+                if s["n"] == 0:
+                    return "  --"
+                return (f"{s['asr']:.3f} ({s['n']})"
+                        f" CI[{s['asr_ci95'][0]:.2f},{s['asr_ci95'][1]:.2f}]")
+            print(f"  {eps:<8.4f} {_fmt(e['overall']):<24} "
+                  f"{_fmt(src.get('alemadi', empty)):<22} "
+                  f"{_fmt(src.get('trident', empty)):<22} "
+                  f"{_fmt(src.get('wildlife_xenocanto', empty)):<22}")
 
     # Side-by-side comparison with white-box if it exists
     wb_csv = out_dir / "cross_dataset_attacks.csv"
-    if wb_csv.exists():
+    if wb_csv.exists() and "FGSM" in attacks:
         wb = pd.read_csv(wb_csv)
         wb_fgsm = wb[(wb["attack"] == "FGSM") & (wb["scope"] == "overall")]
-        print("\n  White-box (CNN14)  vs  Black-box transfer (ProxyAudioCNN)")
+        print("\n  White-box (CNN14) vs Black-box transfer (ProxyAudioCNN) — FGSM")
         print(f"  {'eps':<8} {'WB ASR':>10}   {'BB ASR':>10}   {'ratio':>8}")
         for eps in epsilons:
             wb_row = wb_fgsm[wb_fgsm["epsilon"].round(4) == round(eps, 4)]
-            e = nested["by_eps"].get(f"eps{eps}")
+            e = nested["by_attack_eps"].get(f"FGSM_transfer_eps{eps}")
             if e is None or wb_row.empty:
                 continue
             wb_asr = float(wb_row.iloc[0]["asr"])

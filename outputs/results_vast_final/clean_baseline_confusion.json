@@ -1,4 +1,5 @@
 {
+  "model": "CNN14ProxyClassifier",
   "accuracy": 0.975609756097561,
   "precision": 0.9620853080568721,
   "recall": 0.9902439024390244,
@@ -17,9 +18,9 @@
     "no_drone",
     "drone"
   ],
-  "tp": 203,
   "tn": 197,
   "fp": 8,
   "fn": 2,
+  "tp": 203,
   "n_samples": 410
 }

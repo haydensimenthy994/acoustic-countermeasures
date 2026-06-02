@@ -392,7 +392,7 @@ def main():
     print(f"  RIR kernels ready: {rir_kernels.shape}")
 
     epsilons_fgsm_pgd = [0.001, 0.005, 0.01, 0.02, 0.05]
-    epsilons_eot      = [0.001, 0.005]
+    epsilons_eot      = [0.001, 0.005, 0.01, 0.02, 0.05]
 
     fgsm_results = []
     pgd_results  = []
